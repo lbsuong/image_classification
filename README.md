@@ -16,7 +16,8 @@ Huấn luyện Convolutional Neural Network để phân lớp ảnh bằng Stoch
 ## Kế hoạch làm việc
 | Thành viên | Công việc | Thời gian hoàn thành dự kiến | Thời gian hoàn thành thực tế |
 | --- | --- | --- | --- |
-| Lương Bội Sương | Tìm hiểu cấu trúc của CNN như thế nào để việc nhận dạng ảnh số viết tay của MNIST đạt độ chính xác cao nhất và soạn khung file code. | 19/04/2021 | ... |
-| Võ Thế Sơn | ... | ... | ... |
-| Trần Đình Sang | ... | ... | ... |
-| Phạm Như Quyền | ... | ... | ... |
+| Lương Bội Sương | Tìm hiểu cấu trúc của CNN như thế nào để nhận dạng ảnh số viết tay của MNIST và soạn khung file code tuần tự. | 19/04/2021 | 21/04/2021 |
+| Võ Thế Sơn | Hoàn thành hàm "dot", "gen_conv_filters", "conv_forward" | 21/04/2021 | ... |
+| Trần Đình Sang | Hoàn thành hàm "maxpool_forward", "max", "cost_entropy_loss", "normalize" | 21/04/2021 | ... |
+| Phạm Như Quyền | Hoàn thành hàm, "softmax", "gen_softmax_weights", "softmax_forward" | 21/04/2021 | ... |
+| Lương Bội Sương | Hoàn thành hàm "softmax_backprop", "maxpool_backprop", "conv_backprop" | 21/04/2021 | ... |
