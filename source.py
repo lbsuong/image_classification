@@ -167,7 +167,7 @@ def normalize(X, max):
 	pass
 
 @jit
-def softmax_backprop(d_L_d_out, learningRate, weights, weightsLength, biases, numNode, preSoftmax):
+def softmax_backprop(d_L_d_out, learningRate, weights, weightsLength, biases, numNode, softmaxInputs, softmaxInputsH, softmaxInputsW, preSoftmax):
 	'''
 	Thực hiện lan truyền ngược qua softmax layer.
 
@@ -186,7 +186,7 @@ def softmax_backprop(d_L_d_out, learningRate, weights, weightsLength, biases, nu
 	pass
 
 @jit
-def maxpool_backprop(d_L_d_out, maxpoolInputs, maxpoolInputsH, maxpoolInputsW):
+def maxpool_backprop(d_L_d_out, maxpoolInputs, maxpoolInputsH, maxpoolInputsW, softmaxInputs, softmaxInputsH, softmaxInputsW):
 	'''
 	Thực hiện lan truyền ngược qua maxpool layer.
 
@@ -246,8 +246,8 @@ def train(trainImages, h, w, trainLabels, learningRate, convFilters, convFilters
 		gradient[label] = 1 / postSoftmax[label]
 
 		# Lan truyền ngược.
-		gradient = softmax_backprop(gradient, learningRate, softmaxWeights, softmaxBiases, preSoftmax)
-		gredient = maxpool_backprop(gradient, maxpoolInputs, maxpoolInputsH, maxpoolInputsW)
+		gradient = softmax_backprop(gradient, learningRate, softmaxWeights, softmaxBiases, softmaxInputs, softmaxInputsH, softmaxInputsW, preSoftmax)
+		gredient = maxpool_backprop(gradient, maxpoolInputs, maxpoolInputsH, maxpoolInputsW, softmaxInputs, softmaxInputsH, softmaxInputsW)
 		gradient = conv_backprop(gradient, learningRate, convFilters, convFiltersH, convFiltersW, numConvFilter, convInput, h, w)
 
 	#Tính trung bình cost-entropy loss và phần trăm số dự đoán đúng.
