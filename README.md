@@ -17,7 +17,13 @@ Huấn luyện Convolutional Neural Network để phân lớp ảnh bằng Stoch
 | Thành viên | Công việc | Thời gian hoàn thành dự kiến | Thời gian hoàn thành thực tế |
 | --- | --- | --- | --- |
 | Lương Bội Sương | Tìm hiểu cấu trúc của CNN như thế nào để nhận dạng ảnh số viết tay của MNIST và soạn khung file code tuần tự. | 19/04/2021 | 21/04/2021 |
-| Võ Thế Sơn | Hoàn thành hàm "dot", "gen_conv_filters", "conv_forward" | 21/04/2021 | ... |
-| Trần Đình Sang | Hoàn thành hàm "maxpool_forward", "max", "cost_entropy_loss", "normalize" | 21/04/2021 | ... |
-| Phạm Như Quyền | Hoàn thành hàm, "softmax", "gen_softmax_weights", "softmax_forward" | 21/04/2021 | ... |
-| Lương Bội Sương | Hoàn thành hàm "softmax_backprop", "maxpool_backprop", "conv_backprop" | 21/04/2021 | ... |
+| Võ Thế Sơn | Hoàn thành mục 1 và 2 trong báo cáo | 29/04/2021 | ... |
+| Trần Đình Sang | Hoàn thành mục 1 và 2 trong báo cáo | 29/04/2021 | ... |
+| Phạm Như Quyền | Hoàn thành mục 1 và 2 trong báo cáo | 29/04/2021 | ... |
+| Lương Bội Sương | Hoàn thành mục 1 và 2 trong báo cáo | 29/04/2021 | 21/04/2021 |
+| Cả nhóm | Merge mục 1 và 2 trong báo cáo | 04/05/2021 | ... |
+| Võ Thế Sơn | Hoàn thành cài đặt tuần tự (không dùng numpy) | 04/05/2021 | ... |
+| Trần Đình Sang | Hoàn thành cài đặt tuần tự (không dùng numpy) | 04/05/2021 | ... |
+| Phạm Như Quyền | Hoàn thành cài đặt tuần tự (không dùng numpy) | 04/05/2021 | ... |
+| Lương Bội Sương | Hoàn thành cài đặt tuần tự (không dùng numpy) | 04/05/2021 | ... |
+| Cả nhóm | Merge source code tuần tự (không dùng numpy) | 05/05/2021 | ... |
