@@ -183,7 +183,38 @@ def softmax_backprop(d_L_d_out, learningRate, weights, weightsLength, biases, nu
 	Output:
 		@ "d_L_d_inputs"
 	'''
-	pass
+	for i, gradient in enumerate(d_L_d_out):
+		if gradient == 0:
+			continue
+		
+		# e^preSoftmax
+		e_preSoftmax = [exp(x) for x in preSoftmax]
+
+		# Tổng tất cả phần tử trong e^preSoftmax
+		S = sum(e_preSoftmax)
+
+		# Gradient của out[i] trên biến preSoftmax
+		temp = [-e_preSoftmax[i] * x for x in e_preSoftmax]
+		d_out_d_preSoftmax = [x / (S ** 2) for x in temp]
+		d_out_d_preSoftmax[i] = e_preSoftmax[i] * (S - e_preSoftmax[i]) / (S ** 2)
+
+		# Gradient của preSoftmax trên biến weights/biases/input
+		d_preSoftmax_d_w = softmaxInputs
+		d_preSoftmax_d_b = 1
+		d_preSoftmax_d_inputs = weights
+
+		# Gradient của loss trên biến preSoftmax
+		d_L_d_preSoftmax = [gradient * x for x in d_out_d_preSoftmax]
+
+		# Gradient của loss trên biến weights/biases/input
+		d_L_d_w, d_L_d_w_Height, d_L_d_w_Width = dot(d_preSoftmax_d_w, len(d_preSoftmax_d_w) * softmaxInputsH * softmaxInputsW, 1, d_L_d_preSoftmax, 1, len(d_L_d_preSoftmax))
+		d_L_d_b = [x * d_preSoftmax_d_b for x in d_L_d_preSoftmax]
+		d_L_d_inputs, _, _ = dot(d_preSoftmax_d_inputs, weightsLength, numNode,d_L_d_preSoftmax, numNode, 1)
+
+		# Update weights / biases
+		weights = [x - learningRate * y for (x, y) in zip(weights, d_L_d_w)]
+		biases = [x - learningRate * y for (x, y) in zip(biases, d_L_d_b)]
+		return d_L_d_inputs
 
 @jit
 def maxpool_backprop(d_L_d_out, maxpoolInputs, maxpoolInputsH, maxpoolInputsW, softmaxInputs, softmaxInputsH, softmaxInputsW):
