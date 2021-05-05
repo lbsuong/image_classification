@@ -134,7 +134,7 @@ def gen_softmax_weights(numNode, inputLength):
 	Output:
 		@ Mảng "numNode" phần tử có kích thước là "inputLength".
 	'''
-	return np.ones(shape=(numNode, inputLength)) / inputLength
+	return np.random.rand(numNode, inputLength) / inputLength
 
 @jit
 def softmax(X):
@@ -169,10 +169,9 @@ def softmax_forward(input, weights, biases):
   	@ Mảng các giá trị sau khi tính softmax.
   '''
   input = input.reshape(1, input.shape[0] * input.shape[1] * input.shape[2])
-  preSoftmax = dot(input, weights.transpose())
-  for i in range(preSoftmax.shape[1]):
+  preSoftmax = dot(input, weights.transpose()).flatten()
+  for i in range(len(preSoftmax)):
     preSoftmax[i] += biases[i]
-  preSoftmax = preSoftmax.flatten()
   postSoftmax = softmax(preSoftmax)
   return preSoftmax, postSoftmax
 
@@ -257,7 +256,7 @@ def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedO
     for j in range(len(d_L_d_b)):
       biases[j] -= learningRate * d_L_d_b[j]
 
-    return 1
+    return d_L_d_inputs.reshape(maxpoolOutputsShape)
 
 @jit
 def maxpool_backprop(d_L_d_out, maxpoolForwardInputs):
@@ -289,15 +288,16 @@ def conv_backprop(d_L_d_out, learningRate, convFilters, normalizedImage):
 	pass
 
 @jit
-def max_vec(X):
+def max_value_index(X):
   max = X[0]
   index = 0
   for i in range(len(X)):
     if (X[i] > max):
       max = X[i]
       index = i
-  return max, index
+  return index
 
+@jit
 def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, softmaxWeights, softmaxBiases):
   loss = 0
   accuracy = 0
@@ -312,7 +312,7 @@ def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, soft
 
     # Tính tổng cost-entropy loss và đếm số lượng các dự đoán đúng.
     loss += cost_entropy_loss(postSoftmax[trainLabels[i]])
-    _, predictedLabel = max_vec(postSoftmax)
+    predictedLabel = max_value_index(postSoftmax)
     if predictedLabel == trainLabels[i]:
     	accuracy += 1
 
@@ -329,27 +329,14 @@ def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, soft
   numImage = len(trainImages)
   avgLoss = loss / numImage
   accuracy = accuracy / numImage
-  print(accuracy, avgLoss)
   return avgLoss, accuracy
-	
-def predict(image, convFilters, maxpoolSize, softmaxWeights, softmaxBiases):
-	# Lan truyền xuôi.
-	## Chuẩn hoá mảng image về [0,1] để tính toán dễ dàng hơn.
-  normalizedImage = normalize(image.astype(float))
-  convOutputs = conv_forward(normalizedImage, convFilters)
-  maxpoolOutputs = maxpool_forward(convOutputs, maxpoolSize)
-  preSoftmax, postSoftmax = softmax_forward(maxpoolOutputs, softmaxWeights, softmaxBiases)
-
-	# Nhãn sẽ là phần tử có giá trị softmax cao nhất.
-  _, predictedLabel = max_vec(postSoftmax)
-  return predictedLabel
 
 def main():
   (trainImages, trainLabels), (testImages, testLabels) = mnist.load_data()
-
+  
   # Lấy 1000 phần tử đầu tiên của tập train và test
-  trainImages = trainImages[:100]
-  trainLabels = trainLabels[:100]
+  trainImages = trainImages[:1000]
+  trainLabels = trainLabels[:1000]
 
   convFiltersH = 3
   convFiltersW = 3
