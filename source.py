@@ -116,13 +116,36 @@ def maxpool_forward(input, h, w, numConvFilter, poolSize):
             @ "h" là số dòng của "input".
             @ "w" là số cột của "input".
             @ "numConvFilter" là số lượng các phần tử trong mảng "input".
-    @ "poolSize" là kích thước của maxpool, maxpool là ma trận vuông nhưng được duỗi thẳng thành mảng một chiều.
+                @ "poolSize" là kích thước của maxpool, maxpool là ma trận vuông nhưng được duỗi thẳng thành mảng một chiều.
 
-Output:
+        Output:
             @ Mảng các output sau khi đi qua maxpool layer nhưng các output được duỗi thẳng thành mảng một chiều.
-    @ Số dòng của một output vừa tìm được.
-    @ Số cột của một output vừa tìm được.
+                @ Số dòng của một output vừa tìm được.
+                @ Số cột của một output vừa tìm được.
     '''
+
+       output_arr = []
+        for idx in range(numConvFilter):
+            output = []
+            output_arr.append(output)
+
+        for row in range(0, h, poolSize):
+        for col in range(0, w, poolSize):
+                        # Create a temp array contain value fixing the filter array
+            temp_arr = []
+            for i in range(poolSize):
+                for j in range(poolSize):
+                    temp_row = row + i
+                    temp_col = col + j
+                       if temp_row > h:
+                            temp_row = h
+                        if temp_col > w:
+                            temp_col = w
+
+                    idx = temp_row * w + temp_col
+                    temp_arr.append(input[idx])
+
+
     pass
 
 
