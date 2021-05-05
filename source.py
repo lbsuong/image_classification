@@ -252,14 +252,10 @@ def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedO
     for row in range(weights.shape[0]):
       for col in range(weights.shape[1]):
         weights[row, col] -= learningRate * d_L_d_w[row, col]
-
+        
 		# Cập nhật biases
-    # test = np.zeros(10)
-    # for j in range(len(d_L_d_b)):
-    #   #biases[j] -= learningRate * d_L_d_b[j]
-    #   test[j] = 1
-    #   #print(biases.shape)
-    biases -= learningRate * d_L_d_b
+    for j in range(len(d_L_d_b)):
+      biases[j] -= learningRate * d_L_d_b[j]
 
     return 1
 
@@ -302,7 +298,6 @@ def max_vec(X):
       index = i
   return max, index
 
-@jit
 def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, softmaxWeights, softmaxBiases):
   loss = 0
   accuracy = 0
@@ -322,7 +317,7 @@ def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, soft
     	accuracy += 1
 
     # Khởi tạo gradient
-    gradient = np.zeros(convFilters.shape[0])
+    gradient = np.zeros(softmaxWeights.shape[0])
     gradient[trainLabels[i]] = -1 / postSoftmax[trainLabels[i]]
 
     # Lan truyền ngược.
@@ -337,7 +332,6 @@ def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, soft
   print(accuracy, avgLoss)
   return avgLoss, accuracy
 	
-@jit
 def predict(image, convFilters, maxpoolSize, softmaxWeights, softmaxBiases):
 	# Lan truyền xuôi.
 	## Chuẩn hoá mảng image về [0,1] để tính toán dễ dàng hơn.
