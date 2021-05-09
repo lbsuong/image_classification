@@ -2,142 +2,157 @@ from keras.datasets import mnist
 from numba import jit
 from math import exp
 from math import log
+import numpy as np
 
 @jit
-def dot(A, Ah, Aw, B, Bh, Bw):
+def dot(A, B):
 	'''
-	Nhân ma trận A và B
+	Nhân ma trận A và B, số cột của A phải bằng số dòng của B
 	
 	Input:
-		@ "A" là ma trận với kích thước là Ah*Aw nhưng được biểu diễn dưới dạng mảng một chiều.
-		@ "Ah" là số dòng của ma trận A.
-		@ "Aw" là số cột của ma trận B.
-		@ "B" là ma trận với kích thước là Bh*Bw nhưng được biểu diễn dưới dạng mảng một chiều.
-		@ "Bh" là số dòng của ma trận B.
-		@ "Bw" là số cột của ma trận B.
-
+		@ "A" là ma trận.
+		@ "B" là ma trận.
 	Output:
-		@ Ma trận của tích hai ma trận A và B nhưng được duỗi thẳng thành mảng một chiều.
-		@ Số dòng của ma trận vừa tìm được.
-		@ Số cột của ma trận vừa tìm được.
+		@ Ma trận của tích hai ma trận A và B.
 	'''
-	pass
-
+	
+	if A.shape[0] != B.shape[1]:
+		return None
+	
+	C = np.zeros((A.shape[1],B.shape[0]))
+	for i in range(A.shape[1]):
+		for j in range(B.shape[0]):
+			for k in range(A.shape[0]):
+				C[i,j] = C[i,j] + A[i,k] * B[k,j]
+	return C
 @jit
 def gen_conv_filters(h, w, numConvFilter):
 	'''
 	Khởi tạo "numConvFilter" filter với kích thước là h*w được gán các giá trị ngẫu nhiên.
-
 	Input:
 		@ "h" là số dòng của một filter.
 		@ "w" là số cột của một filter.
 		@ "numConvFilter" là số lượng filter cần tạo.
-
 	Output:
-		@ Mảng các ma trận filter với kích thước là h*w nhưng các filter được duỗi thẳng thành mảng một chiều.
+		@ Mảng các ma trận filter với filter có kích thước là h*w.
 	'''
-	pass
-	
+	C = np.zeros(numConvFilter)
+	for ConvFilter in C:
+		ConvFilter = np.random.rand(h,w)
+	return C
 @jit
-def conv_forward(input, h, w, filters, filtersH, filtersW, numConvFilter):
+def conv_forward(_input, filters):
 	'''
 	Thực hiện lan truyền xuôi qua conv layer.
-
     Input:
-    	@ "input" là mảng một chiều của hình ảnh đầu vào, có kích thước là h*w.
-		@ "h" là số dòng của "input".
-		@ "w" là số cột của "input".
-		@ "filters" là mảng các filter được tạo bởi hàm "gen_conv_filters".
-		@ "filtersH" là số dòng của một filter.
-		@ "filtersW" là số cột của một filter.
-		@ "numConvFilter" là số lượng các filter trong "filters".
-
+    	@ "input" là ma trận các giá trị của hình ảnh đầu vào sau khi được chuẩn hoá.
+		@ "filters" là mảng các ma trận filter được tạo bởi hàm "gen_conv_filters".
     Output:
-		@ Mảng các output sau khi đi qua conv layer nhưng các output được duỗi thẳng thành mảng một chiều.
-    	@ Số dòng của một output vừa tìm được.
-		@ Số cột của một output vừa tìm được.
+		@ Mảng các output sau khi đi qua conv layer.
     '''
-	pass
-    
+	
+	conv_h = _input.shape[0] - filters.shape[1] + 1
+	conv_w = _input.shape[1] - filters.shape[2] + 1
+	Output_conv = np.zeros((_input.shape[0],conv_h,conv_w))
+	for id_filter in range(filters.shape[0]):
+		for conv_r in range(conv_h):
+			for conv_c in range(conv_w):
+				for filter_r in range(filters.shape[1]):
+					for filter_c in range(filters.shape[2]):
+						Output_conv[conv_r,conv_c] = Output_conv[conv_r,conv_c] + _input[conv_r+filter_r,conv_c+filter_c] * filters[id_filter,filter_r,filter_c]
+	return Output_conv
 @jit
-def maxpool_forward(input, h, w, numConvFilter, poolSize):
+def maxpool_forward(_input, poolSize):
 	'''
 	Thực hiện lan truyền xuôi qua maxpool layer.
 	
 	Input:
 		@ "input" là mảng các output của hàm "conv_forward".
-		@ "h" là số dòng của "input".
-		@ "w" là số cột của "input".
-		@ "numConvFilter" là số lượng các phần tử trong mảng "input".
-    	@ "poolSize" là kích thước của maxpool, maxpool là ma trận vuông nhưng được duỗi thẳng thành mảng một chiều.
+    	@ "poolSize" là kích thước của maxpool, maxpool là ma trận vuông.
 		
     Output:
-		@ Mảng các output sau khi đi qua maxpool layer nhưng các output được duỗi thẳng thành mảng một chiều.
-    	@ Số dòng của một output vừa tìm được.
-    	@ Số cột của một output vừa tìm được.
+		@ Mảng các output sau khi đi qua maxpool layer.
 	'''
-	pass
+	output_forward = np.zeros((_input.shape[0], int(_input.shape[1] / poolSize) + 1, int(_input.shape[2] / poolSize) + 1))
+	for id_conv in range(output_forward.shape[0]):
+		for id_row in range(0, output_forward.shape[1]):
+			for id_col in range(0, output_forward.shape[2]):
+				temp_arr = []
+				for id_pool_row in range(poolSize):
+					for id_pool_col in range(poolSize):
+						temp_arr.append(_input[id_conv, id_row + id_pool_row, id_col + id_pool_col])
+				output_forward[id_conv, id_row, id_col] = max(temp_arr)
+	return output_forward
 
 @jit
 def softmax(X):
 	'''
 	Tính giá trị softmax của mảng một chiều X.
-
 	Input:
 		@ "X" là mảng một chiều.
-
 	Output:
 		@ Mảng các giá trị softmax được tính từ X.
 	'''
-	pass
-
+	output_softmax = np.zeros(X.shape[0])
+	for i in range(output_softmax.shape[0]):
+		print(X[i])
+		output_softmax[i] = np.exp(X[i])/ sum(np.exp(X))
+	return output_softmax
 @jit
-def gen_softmax_weights(length, numNode):
+
+def gen_softmax_weights(inputLength, numNode):
 	'''
 	Khởi tạo "numNode" trọng số với kích thước là "length" được gán các giá trị ngẫu nhiên.
-
 	Input:
-		@ "length" là số trọng số có trong một node.
+		@ "inputLength" là số trọng số có trong một node.
 		@ "numNode" số lượng các node.
-
 	Output:
-		@ Mảng "numNode" trọng số có kích thước là "length".
+		@ Mảng "numNode" phần tử có kích thước là "inputLength".
 	'''
-	pass
-	
+	softmax_weights = np.random.rand(100,size=(numNode,inputLength))
+	return softmax_weights
 @jit
-def softmax_forward(input, h, w, numConvFilter, weights, weightsLength, biases, numNode):
+def flatten(X):
+	'''
+	Duỗi thẳng X thành mảng một chiều.
+	Input:
+		@ "X" là mảng với bất cứ chiều nào.
+	Output:
+		@ Mảng một chiều.
+	'''
+	return np.array(X).flatten()
+@jit
+def softmax_forward(_input, weights, biases):
 	'''
 	Thực hiện lan truyền xuôi qua softmax layer, softmax layer là một fully connected layer.
-
 	Input:
 		@ "input" là mảng các output của hàm "maxpool_forward".
-		@ "h" là số dòng của "input".
-		@ "w" là số cột của "input".
-		@ "numConvFilter" là số lượng các phần tử trong mảng "input".
-		@ "weights" là mảng các trọng số của những node trong softmax layer, các trọng số trong một node là mảng một chiều.
-		@ "weightsLength" là số trọng số có trong một node.
+		@ "weights" là mảng các trọng số của những node trong softmax layer.
 		@ "biases" là mảng các bias của những node trong softmax layer.
-		@ "numNode" là số lượng các node có trong softmax layer.
     
     Output:
 		@ Mảng các giá trị trước khi tính softmax.
 		@ Mảng các giá trị sau khi tính softmax.
+		@ Shape của "input".
 	'''
-	pass
-
+	temp_input = []
+	for i in range(_input.shape[0]):
+		temp_input.append(_input[i].flatten())
+	temp_input = np.array(temp_input)
+	results_softmax = np.zeros(_input.shape[0])
+	for i in range(_input.shape[0]):
+		results_softmax[i] = np.sum(_input[i]*weights[i]) + biases[i]
+	return _input, results_softmax, _input.shape
 @jit
 def max(X):
 	'''
 	Tìm max trong mảng một chiều X.
-
 	Input:
 		@ "X" là mảng một chiều.
-
 	Output:
 		@ Max của X
 	'''
-	pass
+	return np.max(X)
 
 @jit
 def cost_entropy_loss(x):
@@ -146,84 +161,83 @@ def cost_entropy_loss(x):
 	
 	Input:
 		@ "x" là giá trị lớn nhất của mảng trả về từ hàm "softmax_forward".
-
 	Output:
 		@ Độ lỗi cost-entropy loss.
 	'''
-	pass
+	return -np.log(x)
 
 @jit
-def normalize(X, max):
+def normalize(X, _max):
 	'''
 	Chuẩn hoá các phần tử trong mảng một chiều X về dạng [0,1] bằng cách chia cho "max".
-
 	Input:
 		@ "X" là mảng một chiều có "n" phần tử.
 		@ "max" là giá trị tối đa.
-
 	Output:
 		@ Mảng các giá trị đã được normalize.
 	'''
-	pass
+	X_new = np.zeros(X.shape)
+	for i in range(X_new.shape[0]):
+		X_new[i] = X_new[i]/_max
+	return X_new
+@jit
+def reshape(X, shape):
+	'''
+	Chuyển mảng một chiều "X" sang mảng "shape" chiều.
+	Input:
+		@ "X" là mảng một chiều.
+		@ "shape" là một tuple chứa hình dạng của mảng sau khi reshape.
+	Output:
+		@ Mảng có hình dạng là "shape".
+	'''
 
 @jit
-def softmax_backprop(d_L_d_out, learningRate, weights, weightsLength, biases, numNode, preSoftmax):
+def softmax_backprop(gradient_out, learningRate, weights, biases, softmaxForwardFlattenedInputs, softmaxForwardInputsShape, preSoftmax):
 	'''
 	Thực hiện lan truyền ngược qua softmax layer.
-
 	Input:
-		@ "d_L_d_out" là loss gradient cho output của lớp này.
+		@ "gradient_out" là gradient của hàm lỗi so với output của hàm "softmax_forward".
 		@ "learningRate" là tốc độ học.
 		@ "weights" là mảng các trọng số của những node trong softmax layer, các trọng số trong một node là mảng một chiều.
-		@ "weightsLength" là số trọng số có trong một node.
 		@ "biases" là mảng các bias của những node trong softmax layer.
-		@ "numNode" là số lượng các node có trong softmax layer.
+		@ "softmaxForwardFlattenedInputs" là mảng các ma trận input của hàm "softmax_forward" đã được duỗi thẳng thành mảng một chiều.
+		@ "softmaxForwardInputsShape" là một tuple chứa hình dạng của input của hàm "softmax_forward".
 		@ "preSoftmax" là mảng các giá trị trước khi tính softmax trong hàm "softmax_forward".
-
 	Output:
-		@ "d_L_d_inputs"
+		@ "gradient_in" là gradient của hàm lỗi so với input của hàm "softmax_forward".
+	'''
+	for i, gradient in enumerate(gradient_out):
+		if gradient == 0:
+			continue
+	pass
+
+@jit
+def maxpool_backprop(d_L_d_out, maxpoolForwardInputs):
+	'''
+	Thực hiện lan truyền ngược qua maxpool layer.
+	Input:
+		@ "d_L_d_out" là gradient của hàm lỗi so với output của hàm "maxpool_forward".
+		@ "maxpoolForwardInputs" là mảng các input của hàm "maxpool_forward".
+	Output:
+		@ "d_L_d_input" là gradient của hàm lỗi so với input của hàm "maxpool_forward".
 	'''
 	pass
 
 @jit
-def maxpool_backprop(d_L_d_out, maxpoolInputs, maxpoolInputsH, maxpoolInputsW):
+def conv_backprop(d_L_d_out, learningRate, convFilters, normalizedImage):
 	'''
 	Thực hiện lan truyền ngược qua maxpool layer.
-
 	Input:
-		@ "d_L_d_out" là loss gradient cho output của lớp này.
-		@ "maxpoolInputs" là mảng các input được truyền vào trong hàm "maxpool_forward".
-		@ "maxpoolInputsH" là số dòng trong "maxpoolInputs".
-		@ "maxpoolInputsW" là số cột trong "maxpoolInputs".
-
-	Output:
-		@ "d_L_d_input"
-	'''
-	pass
-
-@jit
-def conv_backprop(d_L_d_out, learningRate, convFilters, convFiltersH, convFiltersW, numConvFilter, convInput, h, w):
-	'''
-	Thực hiện lan truyền ngược qua maxpool layer.
-
-	Input:
-		@ "d_L_d_out" là loss gradient cho output của lớp này.
+		@ "d_L_d_out" là gradient của hàm lỗi so với output của hàm "conv_forward".
 		@ "learningRate" là tốc độ học.
 		@ "convFilters" là mảng các conv filter trong hàm "conv_forward".
-		@ "convFiltersH" là số dòng của một filter.
-		@ "convFiltersW" là số cột của một filter.
-		@ "numConvFilter" là số lượng các filter.
-		@ "convInput" là mảng input trong hàm "conv_forward".
-		@ "h" là số dòng của "convInput".
-		@ "w" là số cột của "convInput".
+		@ "normalizedImage" là ma trận các giá trị của hình ảnh đầu vào sau khi được chuẩn hoá.
 	
 	Output: None
 	'''
-	pass
 
 @jit
-def train(trainImages, h, w, trainLabels, learningRate, convFilters, convFiltersH, convFiltersW, maxpoolSize, softmaxWeights, softmaxWeightsLength, softmaxBiases, numNode):
-	numConvFilter = len(convFilters)
+def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, softmaxWeights, softmaxBiases, numNode):
 	loss = 0
 	accuracy = 0
 
@@ -231,9 +245,9 @@ def train(trainImages, h, w, trainLabels, learningRate, convFilters, convFilters
 		# Lan truyền xuôi.
 		## Chuẩn hoá mảng image về [0,1] để tính toán dễ dàng hơn.
 		convInput = normalize(image, 255)
-		maxpoolInputs, maxpoolInputsH, maxpoolInputsW = conv_forward(convInput, h, w, convFilters, convFiltersH, convFiltersW, numConvFilter)
-		softmaxInputs, softmaxInputsH, softmaxInputsW = maxpool_forward(maxpoolInputs, maxpoolInputsH, maxpoolInputsW, numConvFilter, maxpoolSize)
-		preSoftmax, postSoftmax = softmax_forward(softmaxInputs, softmaxInputsH, softmaxInputsW, numConvFilter, softmaxWeights, softmaxWeightsLength, softmaxBiases, numNode)
+		maxpoolInputs = conv_forward(convInput, convFilters)
+		softmaxInputs = maxpool_forward(maxpoolInputs, maxpoolSize)
+		preSoftmax, postSoftmax, softmaxInputsShape = softmax_forward(softmaxInputs, softmaxWeights, softmaxBiases)
 
 		# Tính tổng cost-entropy loss và đếm số lượng các dự đoán đúng.
 		loss += cost_entropy_loss(postSoftmax[label])
@@ -246,9 +260,9 @@ def train(trainImages, h, w, trainLabels, learningRate, convFilters, convFilters
 		gradient[label] = 1 / postSoftmax[label]
 
 		# Lan truyền ngược.
-		gradient = softmax_backprop(gradient, learningRate, softmaxWeights, softmaxBiases, preSoftmax)
-		gredient = maxpool_backprop(gradient, maxpoolInputs, maxpoolInputsH, maxpoolInputsW)
-		gradient = conv_backprop(gradient, learningRate, convFilters, convFiltersH, convFiltersW, numConvFilter, convInput, h, w)
+		gradient = softmax_backprop(gradient, learningRate, softmaxWeights, softmaxBiases, softmaxInputs, softmaxInputsShape, preSoftmax)
+		gradient = maxpool_backprop(gradient, maxpoolInputs)
+		gradient = conv_backprop(gradient, learningRate, convFilters, convInput)
 
 	#Tính trung bình cost-entropy loss và phần trăm số dự đoán đúng.
 	numImage = len(trainImages)
@@ -257,14 +271,13 @@ def train(trainImages, h, w, trainLabels, learningRate, convFilters, convFilters
 	return avgLoss, accuracy
 	
 @jit
-def predict(image, h, w, convFilters, convFiltersH, convFiltersW, maxpoolSize, softmaxWeights, softmaxWeightsLength, softmaxBiases, numNode):
+def predict(image, convFilters, maxpoolSize, softmaxWeights, softmaxBiases):
 	# Lan truyền xuôi.
 	## Chuẩn hoá mảng image về [0,1] để tính toán dễ dàng hơn.
-	numConvFilter = len(convFilters)
 	convInput = normalize(image, 255)
-	maxpoolInputs, maxpoolInputsH, maxpoolInputsW = conv_forward(convInput, h, w, convFilters, convFiltersH, convFiltersW, numConvFilter)
-	softmaxInputs, softmaxInputsH, softmaxInputsW = maxpool_forward(maxpoolInputs, maxpoolInputsH, maxpoolInputsW, numConvFilter, maxpoolSize)
-	_, postSoftmax = softmax_forward(softmaxInputs, softmaxInputsH, softmaxInputsW, numConvFilter, softmaxWeights, softmaxWeightsLength, softmaxBiases, numNode)
+	maxpoolInputs = conv_forward(convInput, convFilters)
+	softmaxInputs = maxpool_forward(maxpoolInputs, maxpoolSize)
+	_, postSoftmax, _ = softmax_forward(softmaxInputs, softmaxWeights, softmaxBiases)
 
 	# Nhãn sẽ là phần tử có giá trị softmax cao nhất.
 	predictedLabel = max(postSoftmax)
@@ -272,22 +285,10 @@ def predict(image, h, w, convFilters, convFiltersH, convFiltersW, maxpoolSize, s
 
 def main():
 	(trainImages, trainLabels), (testImages, testLabels) = mnist.load_data()
-	h = trainImages.shape[1]
-	w = trainImages.shape[2]
-	# trainImages = trainImages.reshape(trainImages.shape[0], h*w)
-	# trainImages = trainImages.tolist()
-	# trainLabels = trainLabels.tolist()
-	# testImages = testImages.reshape(testImages.shape[0], h*w)
-	# testImages = testImages.tolist()
-	# testLabels = testLabels.tolist()
 
 	# Lấy 1000 phần tử đầu tiên của tập train và test
-	trainImages = trainImages.reshape(trainImages.shape[0], h*w)[0:1000,:]
-	trainImages = trainImages.tolist()
-	trainLabels = trainLabels.tolist()[0:1000]
-	testImages = testImages.reshape(testImages.shape[0], h*w)[0:1000,:]
-	testImages = testImages.tolist()
-	testLabels = testLabels.tolist()[0:1000]
+	trainImages = trainImages[:1000]
+	trainLabels = trainLabels[:1000]
 
 	convFiltersH = 3
 	convFiltersW = 3
@@ -302,7 +303,7 @@ def main():
 	softmaxBiases = [0] * numNode
 
 	learningRate = 0.005
-	avgLoss, accuracy = train(trainImages, h, w, learningRate, convFilters, convFiltersH, convFiltersW, numConvFilter, maxpoolSize, softmaxWeights, softmaxWeightsLength, softmaxBiases, numNode)
+	avgLoss, accuracy = train(trainImages, learningRate, convFilters, maxpoolSize, softmaxWeights, softmaxBiases)
 	print("Average loss: {avgLoss:.3f} | Accuracy: {accuravy:.2f}".format(avgLoss=avgLoss, accuracy=accuracy*100))
 
 if __name__ == "__main__":
