@@ -3,6 +3,8 @@ from tensorflow.keras.datasets import mnist
 import numpy as np
 import math
 
+EPSILON = 1e-7
+
 @jit
 def dot(A, B):
   '''
@@ -177,16 +179,18 @@ def softmax_forward(input, weights, biases):
 
 @jit
 def cost_entropy_loss(x):
-	'''
-	Hàm tính đỘ lỗi.
-	
-	Input:
-		@ "x" là giá trị lớn nhất của mảng trả về từ hàm "softmax_forward".
+  '''
+  Hàm tính đỘ lỗi.
 
-	Output:
-		@ Độ lỗi cost-entropy loss.
-	'''
-	return -math.log(x)
+  Input:
+  	@ "x" là giá trị lớn nhất của mảng trả về từ hàm "softmax_forward". 
+
+  Output:
+  	@ Độ lỗi cost-entropy loss.
+  '''
+  # if (x == 0):
+  #   return -math.log(EPSILON)
+  return -math.log(x)
 
 @jit
 def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedOutputs, maxpoolOutputsShape, preSoftmax):
@@ -211,13 +215,24 @@ def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedO
 
     # e^(mỗi phần tử trong preSoftmax)
     e_preSoftmax = np.zeros(len(preSoftmax))
+    # for j in range(len(preSoftmax)):
+    #   temp = math.exp(preSoftmax[j])
+    #   if (temp == 0):
+    #     e_preSoftmax[j] = EPSILON
+    #   else:
+    #     e_preSoftmax[j] = temp
+
     for j in range(len(preSoftmax)):
-      e_preSoftmax[j] = math.exp(preSoftmax[i])
+      e_preSoftmax[j] = math.exp(preSoftmax[j])
 
     # Tổng của tất cả phần tử trong e_preSoftmax
     S = 0
     for j in e_preSoftmax:
       S += j
+    # if S == 0:
+    #   print('S = 0')
+    #   for j in e_preSoftmax:
+    #     print(j)
 
     # Gradient của hàm lỗi so với biến preSoftmax
     d_out_d_preSoftmax = np.zeros(len(e_preSoftmax))
@@ -318,8 +333,12 @@ def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, soft
 
     # Khởi tạo gradient
     gradient = np.zeros(softmaxWeights.shape[0])
+    # if (postSoftmax[trainLabels[i]] == 0):
+    #   gradient[trainLabels[i]] = -1 / EPSILON
+    # else:
+    #   gradient[trainLabels[i]] = -1 / postSoftmax[trainLabels[i]]
     gradient[trainLabels[i]] = -1 / postSoftmax[trainLabels[i]]
-
+    
     # Lan truyền ngược.
     gradient = softmax_backprop(gradient, learningRate, softmaxWeights, softmaxBiases, maxpoolOutputs.flatten(), maxpoolOutputs.shape, preSoftmax)
     #gredient = maxpool_backprop(gradient, maxpoolInputs)
@@ -335,12 +354,12 @@ def main():
   (trainImages, trainLabels), (testImages, testLabels) = mnist.load_data()
   
   # Lấy 1000 phần tử đầu tiên của tập train và test
-  trainImages = trainImages[:1000]
-  trainLabels = trainLabels[:1000]
+  #trainImages = trainImages[:1000]
+  #trainLabels = trainLabels[:1000]
 
   convFiltersH = 3
   convFiltersW = 3
-  numConvFilter = 8
+  numConvFilter = 32
   convFilters = gen_conv_filters(numConvFilter, convFiltersH, convFiltersW)
 
   maxpoolSize = 2
