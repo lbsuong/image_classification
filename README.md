@@ -17,7 +17,7 @@ Huấn luyện Convolutional Neural Network để phân lớp ảnh bằng Stoch
 | Thành viên | Công việc | Thời gian hoàn thành dự kiến | Thời gian hoàn thành thực tế |
 | --- | --- | --- | --- |
 | Lương Bội Sương | Tìm hiểu cấu trúc của CNN như thế nào để nhận dạng ảnh số viết tay của MNIST và soạn khung file code tuần tự. | 19/04/2021 | 21/04/2021 |
-| Võ Thế Sơn | Hoàn thành mục 1 và 2 trong báo cáo | 29/04/2021 | ... |
+| Võ Thế Sơn | Hoàn thành mục 1 và 2 trong báo cáo | 29/04/2021 | 14/05/2021 |
 | Trần Đình Sang | Hoàn thành mục 1 và 2 trong báo cáo | 29/04/2021 | ... |
 | Phạm Như Quyền | Hoàn thành mục 1 và 2 trong báo cáo | 29/04/2021 | ... |
 | Lương Bội Sương | Hoàn thành mục 1 và 2 trong báo cáo | 29/04/2021 | 21/04/2021 |
