@@ -3,7 +3,7 @@ from tensorflow.keras.datasets import mnist
 import numpy as np
 import math
 
-EPSILON = 1e-7
+#EPSILON = 1e-7
 
 @jit
 def dot(A, B):
@@ -102,8 +102,8 @@ def matrix_max(X):
         maxRow = row
         maxCol = col
   return max, (maxRow, maxCol)
-    
-@jit
+
+@jit 
 def maxpool_forward(input, poolSize):
   '''
   Thực hiện lan truyền xuôi qua maxpool layer.
@@ -274,33 +274,50 @@ def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedO
     return d_L_d_inputs.reshape(maxpoolOutputsShape)
 
 @jit
-def maxpool_backprop(d_L_d_out, maxpoolForwardInputs):
-	'''
-	Thực hiện lan truyền ngược qua maxpool layer.
+def maxpool_backprop(d_L_d_out, convForwardOutputs, maxpoolSize):
+  '''
+  Thực hiện lan truyền ngược qua maxpool layer. 
 
-	Input:
-		@ "d_L_d_out" là gradient của hàm lỗi so với output của hàm "maxpool_forward".
-		@ "maxpoolForwardInputs" là mảng các input của hàm "maxpool_forward".
+  Input:
+  	@ "d_L_d_out" là gradient của hàm lỗi so với output của hàm "maxpool_forward".
+  	@ "convForwardOutputs" là mảng các input của hàm "maxpool_forward". 
 
-	Output:
-		@ "d_L_d_input" là gradient của hàm lỗi so với input của hàm "maxpool_forward".
-	'''
-	pass
+  Output:
+  	@ "d_L_d_input" là gradient của hàm lỗi so với input của hàm "maxpool_forward".
+  '''
+  d_L_d_inputs = np.zeros(convForwardOutputs.shape)
+  for node in range(d_L_d_out.shape[0]):
+    for row in range(d_L_d_out.shape[1]):
+      for col in range(d_L_d_out.shape[2]):
+        _, (convForwardOutputs_maxRow, convForwardOutputs_maxCol) = matrix_max(convForwardOutputs[node, row * maxpoolSize : maxpoolSize * (row + 1), col * maxpoolSize : maxpoolSize * (col + 1)])
+        d_L_d_inputs[node, convForwardOutputs_maxRow + row * maxpoolSize, convForwardOutputs_maxCol + col * maxpoolSize] = d_L_d_out[node, row, col]
+  return d_L_d_inputs
 
 @jit
 def conv_backprop(d_L_d_out, learningRate, convFilters, normalizedImage):
-	'''
-	Thực hiện lan truyền ngược qua maxpool layer.
+  '''
+  Thực hiện lan truyền ngược qua maxpool layer.
 
-	Input:
-		@ "d_L_d_out" là gradient của hàm lỗi so với output của hàm "conv_forward".
-		@ "learningRate" là tốc độ học.
-		@ "convFilters" là mảng các conv filter trong hàm "conv_forward".
-		@ "normalizedImage" là ma trận các giá trị của hình ảnh đầu vào sau khi được chuẩn hoá.
-	
-	Output: None
-	'''
-	pass
+  Input:
+  	@ "d_L_d_out" là gradient của hàm lỗi so với output của hàm "conv_forward".
+  	@ "learningRate" là tốc độ học.
+  	@ "convFilters" là mảng các conv filter trong hàm "conv_forward".
+  	@ "normalizedImage" là ma trận các giá trị của hình ảnh đầu vào sau khi được chuẩn hoá.
+
+  Output: None
+  '''
+  d_L_d_filters = np.zeros(convFilters.shape)
+  for node in range(convFilters.shape[0]):
+    for filter_row in range(convFilters.shape[1]):
+      for filter_col in range(convFilters.shape[2]):
+        for d_L_d_out_row in range(d_L_d_out.shape[1]):
+          for d_L_d_out_col in range(d_L_d_out.shape[2]):
+            d_L_d_filters[node, filter_row, filter_col] += d_L_d_out[node, d_L_d_out_row, d_L_d_out_col] * normalizedImage[d_L_d_out_row + filter_row, d_L_d_out_col + filter_col]
+  for node in range(convFilters.shape[0]):
+    for row in range(convFilters.shape[1]):
+      for col in range(convFilters.shape[2]):
+        convFilters[node, row, col] -= learningRate * d_L_d_filters[node, row, col]
+  return None
 
 @jit
 def max_value_index(X):
@@ -341,14 +358,23 @@ def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, soft
     
     # Lan truyền ngược.
     gradient = softmax_backprop(gradient, learningRate, softmaxWeights, softmaxBiases, maxpoolOutputs.flatten(), maxpoolOutputs.shape, preSoftmax)
-    #gredient = maxpool_backprop(gradient, maxpoolInputs)
-    #gradient = conv_backprop(gradient, learningRate, convFilters, convInput)
+    gradient = maxpool_backprop(gradient, convOutputs, maxpoolSize)
+    gradient = conv_backprop(gradient, learningRate, convFilters, normalizedImage)
 
   #Tính trung bình cost-entropy loss và phần trăm số dự đoán đúng.
   numImage = len(trainImages)
   avgLoss = loss / numImage
   accuracy = accuracy / numImage
   return avgLoss, accuracy
+
+@jit
+def predict(image, convFilters, maxpoolSize, softmaxWeights, softmaxBiases):
+  normalizedImage = normalize(image.astype(np.float32))
+  convOutputs = conv_forward(normalizedImage, convFilters)
+  maxpoolOutputs = maxpool_forward(convOutputs, maxpoolSize)
+  _, postSoftmax = softmax_forward(maxpoolOutputs, softmaxWeights, softmaxBiases)
+  predictedLabel = max_value_index(postSoftmax)
+  return predictedLabel
 
 def main():
   (trainImages, trainLabels), (testImages, testLabels) = mnist.load_data()
@@ -370,8 +396,15 @@ def main():
   softmaxBiases = np.zeros(numNode)
 
   learningRate = 0.005
-  avgLoss, accuracy = train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, softmaxWeights, softmaxBiases)
-  print("Average loss: {avgLoss:.3f} | Accuracy: {accuracy:.2f}%".format(avgLoss=avgLoss, accuracy=accuracy*100))
+  avgLoss, trainingAccuracy = train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, softmaxWeights, softmaxBiases)
+  print("Average loss: {avgLoss:.3f} | Training accuracy: {trainingAccuracy:.2f}%".format(avgLoss=avgLoss, trainingAccuracy=trainingAccuracy*100))
+
+  testingAccuracy = 0
+  for image, label in zip(testImages, testLabels):
+    if predict(image, convFilters, maxpoolSize, softmaxWeights, softmaxBiases) == label:
+      testingAccuracy += 1
+  testingAccuracy = (testingAccuracy / len(testLabels)) * 100
+  print("Testing accuracy: {testingAccuracy:.2f}%".format(testingAccuracy=testingAccuracy))
 
 if __name__ == "__main__":
 	main()
