@@ -16,11 +16,19 @@ def dot(A, B):
 	Output:
 		@ Ma trận của tích hai ma trận A và B.
 	'''
-	pass
-
+def dot(A, B):
+	C  = [x[:] for x in [[0]*len(A)]*len(B[0])]
+	for r in range(len(C)):
+		for c in range(len(C[0])):
+			temp = 0
+			for i in range(len(A[0])):
+				temp += A[r][i] * B [i][c]
+			C[r][c] = temp
+	return C
+	
 @jit
 def gen_conv_filters(h, w, numConvFilter):
-	'''
+	''' 
 	Khởi tạo "numConvFilter" filter với kích thước là h*w được gán các giá trị ngẫu nhiên.
 
 	Input:
@@ -31,22 +39,46 @@ def gen_conv_filters(h, w, numConvFilter):
 	Output:
 		@ Mảng các ma trận filter với filter có kích thước là h*w.
 	'''
-	pass
+	# for i in range(0, width):
+    # for j in range(0, height):
+    #     val = random.choice([0, 1])
+    #     print("%d %d\t%d" % (i, j, val))
+	listConv=[]
+	for num in range(numConvFilter):
+		conv = [[0 for x in range(w)] for y in range(h)] 
+		listConv.append(conv)
+	return listConv
+				
+
 	
 @jit
 def conv_forward(input, filters):
 	'''
 	Thực hiện lan truyền xuôi qua conv layer.
 
-    Input:
-    	@ "input" là ma trận các giá trị của hình ảnh đầu vào sau khi được chuẩn hoá.
-		@ "filters" là mảng các ma trận filter được tạo bởi hàm "gen_conv_filters".
+  Input:
+  	@ "input" là ma trận các giá trị của hình ảnh đầu vào sau khi được chuẩn hoá.
+	  @ "filters" là mảng các ma trận filter được tạo bởi hàm "gen_conv_filters".
 
-    Output:
-		@ Mảng các output sau khi đi qua conv layer.
-    '''
-	pass
-    
+  Output:
+	  @ Mảng các output sau khi đi qua conv layer.
+  '''
+	numConv = filters.shape[0]
+	filters_h = filters.shape[1]
+	filters_w = filters.shape[2]
+	input_h=input.shape[0]
+	input_w=input.shape[1]
+	output_h = input_h - filters_h + 1
+	output_w = input_w - filters_w + 1
+	output = np.zeros(shape=(numConv, output_h, output_w))
+	for conv in range(numConv):
+		for output_r in range(output_h):
+			for output_c in range(output_w):
+				for filter_r in range(filters_h):
+					for filter_c in range(filters_w):
+						output[conv, output_r, output_c] += input[filter_r + output_r, filter_c + output_c] * filters[conv, filter_r, filter_c]
+	return output
+	    
 @jit
 def maxpool_forward(input, poolSize):
 	'''
