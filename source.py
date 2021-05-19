@@ -123,7 +123,7 @@ def maxpool_forward(input, poolSize):
 		for output_r in range(output_h):
 			for output_c in range(output_w):
 				output[num][output_r][output_c]= maxMat(input[num, (output_r * poolSize):(poolSize * (output_r + 1)), (output_c * poolSize):(poolSize * (output_c + 1))])
-
+	return output
 	
 
 @jit
