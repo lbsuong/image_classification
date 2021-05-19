@@ -3,8 +3,6 @@ from tensorflow.keras.datasets import mnist
 import numpy as np
 import math
 
-#EPSILON = 1e-7
-
 @jit
 def dot(A, B):
   '''
@@ -188,8 +186,6 @@ def cost_entropy_loss(x):
   Output:
   	@ Độ lỗi cost-entropy loss.
   '''
-  # if (x == 0):
-  #   return -math.log(EPSILON)
   return -math.log(x)
 
 @jit
@@ -215,12 +211,6 @@ def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedO
 
     # e^(mỗi phần tử trong preSoftmax)
     e_preSoftmax = np.zeros(len(preSoftmax))
-    # for j in range(len(preSoftmax)):
-    #   temp = math.exp(preSoftmax[j])
-    #   if (temp == 0):
-    #     e_preSoftmax[j] = EPSILON
-    #   else:
-    #     e_preSoftmax[j] = temp
 
     for j in range(len(preSoftmax)):
       e_preSoftmax[j] = math.exp(preSoftmax[j])
@@ -229,10 +219,6 @@ def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedO
     S = 0
     for j in e_preSoftmax:
       S += j
-    # if S == 0:
-    #   print('S = 0')
-    #   for j in e_preSoftmax:
-    #     print(j)
 
     # Gradient của hàm lỗi so với biến preSoftmax
     d_out_d_preSoftmax = np.zeros(len(e_preSoftmax))
@@ -350,10 +336,6 @@ def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, soft
 
     # Khởi tạo gradient
     gradient = np.zeros(softmaxWeights.shape[0])
-    # if (postSoftmax[trainLabels[i]] == 0):
-    #   gradient[trainLabels[i]] = -1 / EPSILON
-    # else:
-    #   gradient[trainLabels[i]] = -1 / postSoftmax[trainLabels[i]]
     gradient[trainLabels[i]] = -1 / postSoftmax[trainLabels[i]]
     
     # Lan truyền ngược.
@@ -377,28 +359,28 @@ def predict(image, convFilters, maxpoolSize, softmaxWeights, softmaxBiases):
   return predictedLabel
 
 def main():
-  (trainImages, trainLabels), (testImages, testLabels) = mnist.load_data()
-  
-  # Lấy 1000 phần tử đầu tiên của tập train và test
-  #trainImages = trainImages[:1000]
-  #trainLabels = trainLabels[:1000]
-
+  # Khởi tạo các tham số
   convFiltersH = 3
   convFiltersW = 3
   numConvFilter = 32
-  convFilters = gen_conv_filters(numConvFilter, convFiltersH, convFiltersW)
-
   maxpoolSize = 2
-
   numNode = 10
+  learningRate = 0.005
+
+  # Load dữ liệu, chia tập train test
+  (trainImages, trainLabels), (testImages, testLabels) = mnist.load_data()
+  
+  # Khởi tạo các filter và trọng số
+  convFilters = gen_conv_filters(numConvFilter, convFiltersH, convFiltersW)
   softmaxWeightsLength = (math.ceil((trainImages.shape[1] - convFiltersH + 1) / maxpoolSize)) * math.ceil(((trainImages.shape[2] - convFiltersW + 1) / maxpoolSize)) * numConvFilter
   softmaxWeights = gen_softmax_weights(numNode, softmaxWeightsLength)
   softmaxBiases = np.zeros(numNode)
 
-  learningRate = 0.005
+  # Training
   avgLoss, trainingAccuracy = train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, softmaxWeights, softmaxBiases)
   print("Average loss: {avgLoss:.3f} | Training accuracy: {trainingAccuracy:.2f}%".format(avgLoss=avgLoss, trainingAccuracy=trainingAccuracy*100))
 
+  # Testing
   testingAccuracy = 0
   for image, label in zip(testImages, testLabels):
     if predict(image, convFilters, maxpoolSize, softmaxWeights, softmaxBiases) == label:
