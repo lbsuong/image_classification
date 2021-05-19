@@ -80,6 +80,26 @@ def conv_forward(input, filters):
 	return output
 	    
 @jit
+def maxMat(X):
+  '''
+  Tìm max trong ma trận X.
+  Input:
+  	@ "X" là ma trận.
+  Output:
+  	@ Max của X
+  '''
+  max = 0
+  maxRow = 0
+  maxCol = 0
+  for row in range(X.shape[0]):
+    for col in range(X.shape[1]):
+      if (X[row][col] > max):
+        max = X[row][col]
+        maxRow = row
+        maxCol = col
+  return max
+
+@jit
 def maxpool_forward(input, poolSize):
 	'''
 	Thực hiện lan truyền xuôi qua maxpool layer.
@@ -91,7 +111,20 @@ def maxpool_forward(input, poolSize):
     Output:
 		@ Mảng các output sau khi đi qua maxpool layer.
 	'''
-	pass
+	input_num = input.shape[0]
+	input_h = input.shape[1]
+	input_w = input.shape[2]
+	output_num = input_num
+	output_h= input_h/poolSize
+	output_w= input_w/poolSize
+
+	output = np.zeros(shape=(output_num, output_h, output_w))
+	for num in range(output_num):
+		for output_r in range(output_h):
+			for output_c in range(output_w):
+				output[num][output_r][output_c]= maxMat(input[num, (output_r * poolSize):(poolSize * (output_r + 1)), (output_c * poolSize):(poolSize * (output_c + 1))])
+
+	
 
 @jit
 def softmax(X):
