@@ -3,6 +3,7 @@ from matplotlib import image
 import numpy as np
 import math
 import os
+import time
 
 @jit
 def dot(A, B):
@@ -26,6 +27,7 @@ def dot(A, B):
         output[row, col] += A[row, i] * B[i, col]
   return output
 
+@jit
 def grayscale(image):
   result = np.zeros(shape=(image.shape[0], image.shape[1]))
   for row in range(image.shape[0]):
@@ -365,10 +367,10 @@ def main():
   testFolder = 'fruits-360\\Test'
   imageHeight = 100
   imageWidth = 100
-  convFiltersH = 7
-  convFiltersW = 7
+  convFiltersH = 3
+  convFiltersW = 3
   numConvFilter = 1
-  maxpoolSize = 3
+  maxpoolSize = 2
   learningRate = 0.005
 
   # Tính toán các tham số
@@ -385,6 +387,7 @@ def main():
   trainingAccuracy = 0
   avgLoss = 0
   numTrainingImage = 0
+  trainingTime = 0
   for categoryIndex, category in enumerate(categories):
     folder = trainFolder + '\\' + category
     for filename in os.listdir(folder):
@@ -392,13 +395,16 @@ def main():
       trainImage = image.imread(folder + '\\' + filename)
       trainImage = grayscale(trainImage)
       trainLabel = categoryIndex
+      start = time.time()
       isAccurate, loss = train(trainImage, trainLabel, learningRate, convFilters, maxpoolSize, softmaxWeights, softmaxBiases)
+      end = time.time()
+      trainingTime += end - start
       if isAccurate:
         trainingAccuracy += 1
       avgLoss += loss
   trainingAccuracy /= numTrainingImage
   avgLoss /= numTrainingImage
-  print("Average loss: {avgLoss:.3f} | Training accuracy: {trainingAccuracy:.2f}%".format(avgLoss=avgLoss, trainingAccuracy=trainingAccuracy*100))
+  print("Average loss: {avgLoss:.3f} | Training accuracy: {trainingAccuracy:.2f}% | Training time: {trainingTime:.2f}".format(avgLoss=avgLoss, trainingAccuracy=trainingAccuracy*100, trainingTime=trainingTime))
 
   # Testing
   testingAccuracy = 0
