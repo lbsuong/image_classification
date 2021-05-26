@@ -231,7 +231,7 @@ def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedO
     # Gradient của hàm lỗi so với biến preSoftmax
     d_out_d_preSoftmax = np.zeros(len(e_preSoftmax))
     for k in range(len(e_preSoftmax)):
-      d_out_d_preSoftmax[k] = (-e_preSoftmax[i] * e_preSoftmax[k]) / (S ** 2)
+        d_out_d_preSoftmax[k] = (-e_preSoftmax[i] * e_preSoftmax[k]) / (S ** 2)
     d_out_d_preSoftmax[i] = e_preSoftmax[i] * (S - e_preSoftmax[i]) / (S ** 2)
 
     # Gradient của preSoftmax so với biến weights/biases/inputs
@@ -240,7 +240,6 @@ def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedO
     d_preSoftmax_d_inputs = weights
 
 		# Gradient của hàm lỗi so với biến preSoftmax
-		# xem lại
     d_L_d_preSoftmax = np.zeros(len(d_out_d_preSoftmax))
     for j in range(len(d_out_d_preSoftmax)):
       d_L_d_preSoftmax[j] = gradient * d_out_d_preSoftmax[j]
@@ -384,7 +383,7 @@ def main():
   numConvFilter = 32
   maxpoolSize = 2
   numClass = 10
-  learningRate = 0.01
+  learningRate = 0.005
   epoch = 100
 
   # Load dữ liệu, chia tập train test
