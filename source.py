@@ -1,8 +1,14 @@
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
 from numba import jit
-from matplotlib import image
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.optimizers import SGD
 import numpy as np
 import math
-import os
 import time
 
 @jit
@@ -28,15 +34,7 @@ def dot(A, B):
   return output
 
 @jit
-def grayscale(image):
-  result = np.zeros(shape=(image.shape[0], image.shape[1]))
-  for row in range(image.shape[0]):
-    for col in range(image.shape[1]):
-      result[row, col] = image[row, col, 0] * 0.299 + image[row, col, 1] * 0.587 + image[row, col, 2] * 0.114
-  return result
-
-@jit
-def gen_conv_filters(numConvFilter, h, w):
+def gen_conv_filters(numConvFilter, convFilterSize):
 	'''
 	Khởi tạo "numConvFilter" filter với kích thước là h*w được gán các giá trị ngẫu nhiên.
 
@@ -48,7 +46,7 @@ def gen_conv_filters(numConvFilter, h, w):
 	Output:
 		@ Mảng các ma trận filter với kích thước là h*w nhưng các filter được duỗi thẳng thành mảng một chiều.
 	'''
-	return np.random.rand(numConvFilter, h, w) / (h * w)
+	return np.random.rand(numConvFilter, convFilterSize, convFilterSize) / (convFilterSize * convFilterSize)
 
 @jit
 def normalize(X):
@@ -65,7 +63,7 @@ def normalize(X):
   for row in range(X.shape[0]):
     for col in range(X.shape[1]):
       X[row, col] = (X[row, col] / 255) - 0.5
-  return X
+  return X.astype(np.float32)
 
 @jit
 def conv_forward(input, filters):
@@ -111,7 +109,7 @@ def matrix_max(X):
         maxCol = col
   return max, (maxRow, maxCol)
 
-@jit 
+@jit
 def maxpool_forward(input, poolSize):
   '''
   Thực hiện lan truyền xuôi qua maxpool layer.
@@ -326,100 +324,123 @@ def max_value_index(X):
   return index
 
 @jit
-def train(trainImage, trainLabel, learningRate, convFilters, maxpoolSize, softmaxWeights, softmaxBiases):
-	# Lan truyền xuôi.
-	## Chuẩn hoá mảng image về [0,1] để tính toán dễ dàng hơn.
-  normalizedImage = normalize(trainImage.astype(np.float32))
-  convOutputs = conv_forward(normalizedImage, convFilters)
-  maxpoolOutputs = maxpool_forward(convOutputs, maxpoolSize)
-  preSoftmax, postSoftmax = softmax_forward(maxpoolOutputs, softmaxWeights, softmaxBiases)
-
-  # Tính tổng cost-entropy loss và đếm số lượng các dự đoán đúng.
-  loss = cost_entropy_loss(postSoftmax[trainLabel])
-  predictedLabel = max_value_index(postSoftmax)
-  accuracy = False
-  if predictedLabel == trainLabel:
-  	accuracy = True
-
-  # Khởi tạo gradient
-  gradient = np.zeros(softmaxWeights.shape[0])
-  gradient[trainLabel] = -1 / postSoftmax[trainLabel]
+def train(trainImages, trainLabels, learningRate, convFilters1, convFilters2, maxpoolSize, softmaxWeights, softmaxBiases):
+  loss = 0
+  accuracy = 0
   
-  # Lan truyền ngược.
-  gradient = softmax_backprop(gradient, learningRate, softmaxWeights, softmaxBiases, maxpoolOutputs.flatten(), maxpoolOutputs.shape, preSoftmax)
-  gradient = maxpool_backprop(gradient, convOutputs, maxpoolSize)
-  gradient = conv_backprop(gradient, learningRate, convFilters, normalizedImage)
+  for i in range(trainImages.shape[0]):
+	  # Lan truyền xuôi.
+    convOutputs = conv_forward(trainImages[i], convFilters1)
+    maxpoolOutputs = maxpool_forward(convOutputs, maxpoolSize)
+    preSoftmax, postSoftmax = softmax_forward(maxpoolOutputs, softmaxWeights, softmaxBiases)
 
-  return accuracy, loss
+    # Tính tổng cost-entropy loss và đếm số lượng các dự đoán đúng.
+    loss += cost_entropy_loss(postSoftmax[trainLabels[i]])
+    predictedLabel = max_value_index(postSoftmax)
+    if predictedLabel == trainLabels[i]:
+    	accuracy += 1
+
+    # Khởi tạo gradient
+    gradient = np.zeros(softmaxWeights.shape[0])
+    gradient[trainLabels[i]] = -1 / postSoftmax[trainLabels[i]]
+    
+    # Lan truyền ngược.
+    gradient = softmax_backprop(gradient, learningRate, softmaxWeights, softmaxBiases, maxpoolOutputs.flatten(), maxpoolOutputs.shape, preSoftmax)
+    gradient = maxpool_backprop(gradient, convOutputs, maxpoolSize)
+    gradient = conv_backprop(gradient, learningRate, convFilters1, trainImages[i])
+
+  #Tính trung bình cost-entropy loss và phần trăm số dự đoán đúng.
+  numImage = len(trainImages)
+  avgLoss = loss / numImage
+  accuracy = accuracy / numImage
+  return avgLoss, accuracy
 
 @jit
-def predict(image, convFilters, maxpoolSize, softmaxWeights, softmaxBiases):
-  normalizedImage = normalize(image.astype(np.float32))
-  convOutputs = conv_forward(normalizedImage, convFilters)
-  maxpoolOutputs = maxpool_forward(convOutputs, maxpoolSize)
-  _, postSoftmax = softmax_forward(maxpoolOutputs, softmaxWeights, softmaxBiases)
-  predictedLabel = max_value_index(postSoftmax)
-  return predictedLabel
+def validate(validateImages, validateLabels, convFilters1, convFilters2, maxpoolSize, softmaxWeights, softmaxBiases):
+  loss = 0
+  accuracy = 0
+  
+  for i in range(validateImages.shape[0]):
+    # Lan truyền xuôi.
+    convOutputs = conv_forward(validateImages[i], convFilters1)
+    maxpoolOutputs = maxpool_forward(convOutputs, maxpoolSize)
+    _, postSoftmax = softmax_forward(maxpoolOutputs, softmaxWeights, softmaxBiases)
+    
+    # Tính tổng cost-entropy loss và đếm số lượng các dự đoán đúng.
+    loss += cost_entropy_loss(postSoftmax[validateLabels[i]])
+    predictedLabel = max_value_index(postSoftmax)
+    if predictedLabel == validateLabels[i]:
+    	accuracy += 1
+  
+  #Tính trung bình cost-entropy loss và phần trăm số dự đoán đúng.
+  numImage = len(validateImages)
+  avgLoss = loss / numImage
+  accuracy = accuracy / numImage
+  return avgLoss, accuracy
 
 def main():
   # Khởi tạo các tham số
-  trainFolder = 'fruits-360\\Training'
-  testFolder = 'fruits-360\\Test'
-  imageHeight = 100
-  imageWidth = 100
-  convFiltersH = 3
-  convFiltersW = 3
-  numConvFilter = 1
+  convFiltersSize = 5
+  numConvFilter = 32
   maxpoolSize = 2
-  learningRate = 0.005
+  numClass = 10
+  learningRate = 0.01
+  epoch = 100
 
-  # Tính toán các tham số
-  categories = os.listdir(trainFolder)
-  numNode = len(categories)
+  # Load dữ liệu, chia tập train test
+  print("Loading data...")
+  (trainImages, trainLabels), (validateImages, validateLabels) = mnist.load_data()
+  normalizeTrainImages = np.zeros(trainImages.shape)
+  normalizeValidateImages = np.zeros(validateImages.shape)
+  print("Normalizing...")
+  for i in range(len(trainLabels)):
+    normalizeTrainImages[i] = normalize(trainImages[i].astype(np.float32))
+  for i in range(len(validateLabels)):
+    normalizeValidateImages[i] = normalize(validateImages[i].astype(np.float32))
   
   # Khởi tạo các filter và trọng số
-  convFilters = gen_conv_filters(numConvFilter, convFiltersH, convFiltersW)
-  softmaxWeightsLength = (math.ceil((imageHeight - convFiltersH + 1) / maxpoolSize)) * math.ceil(((imageWidth - convFiltersW + 1) / maxpoolSize)) * numConvFilter
-  softmaxWeights = gen_softmax_weights(numNode, softmaxWeightsLength)
-  softmaxBiases = np.zeros(numNode)
+  print("Initiating parameters...")
+  convFilters = gen_conv_filters(numConvFilter, convFiltersSize)
+  softmaxWeightsLength = (math.ceil((trainImages.shape[1] - convFiltersSize + 1) / maxpoolSize)) * math.ceil(((trainImages.shape[2] - convFiltersSize + 1) / maxpoolSize)) * numConvFilter
+  softmaxWeights = gen_softmax_weights(numClass, softmaxWeightsLength)
+  softmaxBiases = np.zeros(numClass)
 
-  # Training
-  trainingAccuracy = 0
-  avgLoss = 0
-  numTrainingImage = 0
-  trainingTime = 0
-  for categoryIndex, category in enumerate(categories):
-    folder = trainFolder + '\\' + category
-    for filename in os.listdir(folder):
-      numTrainingImage += 1
-      trainImage = image.imread(folder + '\\' + filename)
-      trainImage = grayscale(trainImage)
-      trainLabel = categoryIndex
-      start = time.time()
-      isAccurate, loss = train(trainImage, trainLabel, learningRate, convFilters, maxpoolSize, softmaxWeights, softmaxBiases)
-      end = time.time()
-      trainingTime += end - start
-      if isAccurate:
-        trainingAccuracy += 1
-      avgLoss += loss
-  trainingAccuracy /= numTrainingImage
-  avgLoss /= numTrainingImage
-  print("Average loss: {avgLoss:.3f} | Training accuracy: {trainingAccuracy:.2f}% | Training time: {trainingTime:.2f}".format(avgLoss=avgLoss, trainingAccuracy=trainingAccuracy*100, trainingTime=trainingTime))
+  # Fit
+  print("\n--------------Our model--------------\n")
+  start = time.time()
+  for e in range(epoch):
+    if epoch != 1:
+      print("Epoch {e}/{epoch}".format(e=e+1, epoch=epoch))
+      print('\t', end='')
+    trainingShuffler = np.random.permutation(len(trainLabels))
+    validationShuffler = np.random.permutation(len(validateLabels))
+    trainingLoss, trainingAccuracy = train(normalizeTrainImages[trainingShuffler], trainLabels[trainingShuffler], learningRate, convFilters, convFilters, maxpoolSize, softmaxWeights, softmaxBiases)
+    validationLoss, validationAccuracy = validate(normalizeValidateImages[validationShuffler], validateLabels[validationShuffler], convFilters, convFilters, maxpoolSize, softmaxWeights, softmaxBiases)
+    print("loss: {trainingLoss:.4f} - accuracy: {trainingAccuracy:.4f} - val_loss: {validationLoss:.4f} - val_accuracy: {validationAccuracy:.4f}".format(trainingLoss=trainingLoss, trainingAccuracy=trainingAccuracy, validationLoss=validationLoss, validationAccuracy=validationAccuracy))
+  stop = time.time()
+  print("Total runtime:", time.strftime("%H:%M:%S", time.gmtime(stop - start)))
 
-  # Testing
-  testingAccuracy = 0
-  numTestingImage = 0
-  for categoryIndex, category in enumerate(categories):
-    folder = testFolder + '\\' + category
-    for filename in os.listdir(folder):
-      numTestingImage += 1
-      testImage = image.imread(folder + '\\' + filename)
-      testImage = grayscale(testImage)
-      testLabel = categoryIndex
-      if predict(testImage, convFilters, maxpoolSize, softmaxWeights, softmaxBiases) == testLabel:
-        testingAccuracy += 1
-  testingAccuracy = (testingAccuracy / numTestingImage) * 100
-  print("Testing accuracy: {testingAccuracy:.2f}%".format(testingAccuracy=testingAccuracy))
+  # keras
+  print("\n--------------Keras model--------------\n")
+  model = Sequential()
+  model.add(Conv2D(numConvFilter, kernel_size=convFiltersSize, input_shape=(trainImages.shape[1], trainImages.shape[2], 1), use_bias=False))
+  model.add(MaxPooling2D(pool_size=maxpoolSize))
+  model.add(Flatten())
+  model.add(Dense(numClass, activation='softmax'))
+  
+  model.compile(SGD(learning_rate=learningRate), loss='categorical_crossentropy', metrics=['accuracy'])
+
+  start = time.time()
+  model.fit(
+    np.expand_dims(normalizeTrainImages, axis=3),
+    to_categorical(trainLabels),
+    batch_size=1, epochs=epoch,
+    validation_data=(np.expand_dims(normalizeValidateImages, axis=3), to_categorical(validateLabels)),
+    verbose=2
+  )
+  stop = time.time()
+  print("Total runtime:", time.strftime("%H:%M:%S", time.gmtime(stop - start)))
+
 
 if __name__ == "__main__":
 	main()
