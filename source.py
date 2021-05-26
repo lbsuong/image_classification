@@ -412,11 +412,13 @@ def main():
     if epoch != 1:
       print("Epoch {e}/{epoch}".format(e=e+1, epoch=epoch))
       print('\t', end='')
+    epochStart = time.time()
     trainingShuffler = np.random.permutation(len(trainLabels))
     validationShuffler = np.random.permutation(len(validateLabels))
     trainingLoss, trainingAccuracy = train(normalizeTrainImages[trainingShuffler], trainLabels[trainingShuffler], learningRate, convFilters, convFilters, maxpoolSize, softmaxWeights, softmaxBiases)
     validationLoss, validationAccuracy = validate(normalizeValidateImages[validationShuffler], validateLabels[validationShuffler], convFilters, convFilters, maxpoolSize, softmaxWeights, softmaxBiases)
-    print("loss: {trainingLoss:.4f} - accuracy: {trainingAccuracy:.4f} - val_loss: {validationLoss:.4f} - val_accuracy: {validationAccuracy:.4f}".format(trainingLoss=trainingLoss, trainingAccuracy=trainingAccuracy, validationLoss=validationLoss, validationAccuracy=validationAccuracy))
+    epochEnd = time.time()
+    print("{second}s - loss: {trainingLoss:.4f} - accuracy: {trainingAccuracy:.4f} - val_loss: {validationLoss:.4f} - val_accuracy: {validationAccuracy:.4f}".format(second=int(epochEnd-epochStart), trainingLoss=trainingLoss, trainingAccuracy=trainingAccuracy, validationLoss=validationLoss, validationAccuracy=validationAccuracy))
   stop = time.time()
   print("Total runtime:", time.strftime("%H:%M:%S", time.gmtime(stop - start)))
 
