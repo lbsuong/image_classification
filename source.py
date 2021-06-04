@@ -352,7 +352,7 @@ def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, soft
         gradient = softmax_backprop(gradient, learningRate, softmaxWeights, softmaxBiases, softmaxInputs.flatten(),
                                     softmaxInputs.shape, preSoftmax)
         print("gradient: ", gradient)
-        gradient = maxpool_backprop(gradient, maxpoolInputs)
+        gradient = maxpool_backprop(gradient, maxpoolInputs, maxpoolSize)
         gradient = conv_backprop(gradient, learningRate, convFilters, convInput)
 
     # Tính trung bình cost-entropy loss và phần trăm số dự đoán đúng.
