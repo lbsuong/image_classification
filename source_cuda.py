@@ -1,7 +1,7 @@
 from re import U
 import time
 import math
-from typing_extensions import ParamSpecArgs
+# from typing_extensions import ParamSpecArgs
 from unittest import signals
 import numba
 from numba.cuda.stubs import blockDim, threadIdx
@@ -13,7 +13,9 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.datasets import mnist
 from numba import cuda, jit
 import os
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
 
 # có thể sử dụng SMEM để tối ưu ở version 2
 
@@ -55,13 +57,56 @@ def normalize_kernel(X):
     col = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
     if row > X.shape[0] or col > X.shape[1]:
         return
-    X[row, col] = (X[row, col]/255) - 0.5
+    X[row, col] = (X[row, col] / 255) - 0.5
+
+
+@cuda.jit
+def divide_max_kernel(X, _max, X_return):
+    """
+    Chuẩn hoá các phần tử trong mảng một chiều X về dạng [0,1] bằng cách chia cho "_max".
+
+    Input:
+        @ "X" là ma trận.
+        @ "max" là giá trị tối đa.
+
+    Output:
+        @ Mảng các giá trị đã được normalize.
+    """
+    row = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
+    col = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    if row > X.shape[0] or col > X.shape[1]:
+        return
+    X_return[row, col] = (X[row, col] / _max)
+
 
 # có thể sử dụng SMEM để tối ưu trên version 2
 
 
 @cuda.jit
-def conv_forward_kernel(input, filters, output, outputHeight, outputWidth):
+def update_weights_kernel(W, gradient_w, learning_rate):
+    row = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
+    col = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    if row > W.shape[0] or col > W.shape[1]:
+        return
+    W[row, col] = W[row, col] - learning_rate * gradient_w[row, col]
+
+@cuda.jit
+def update_biases_kernel(B, gradient_b, learning_rate):
+    idx = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    if idx < B.shape[0]:
+        B[idx] = B[idx] - learning_rate * gradient_b[idx]
+
+
+'''
+@cuda.jit
+def devide_all_kernel(X,z):
+    row = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
+    col = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    if row > X.shape[0] or col > X.shape[1]:'''
+
+
+@cuda.jit
+def conv_forward_kernel(_input, filters, output, outputHeight, outputWidth):
     '''
         Thực hiện lan truyền xuôi qua conv layer.
 
@@ -77,15 +122,16 @@ def conv_forward_kernel(input, filters, output, outputHeight, outputWidth):
     outputRow = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
     outputCol = cuda.blockIdx.z * cuda.blockDim.z + cuda.threadIdx.z
 
-    #output = np.zeros(shape=(filters.shape[0], outputHeight, outputWidth))
+    # output = np.zeros(shape=(filters.shape[0], outputHeight, outputWidth))
 
     if node > filter.shape[0] or outputRow > outputHeight or outputCol > outputWidth:
         return
 
     for filterRow in range(filters.shape[1]):
         for filterCol in range(filters.shape[2]):
-            output[node, outputRow, outputCol] += input[filterRow + outputRow,
-                                                        filterCol + outputCol] * filters[node, filterRow, filterCol]
+            output[node, outputRow, outputCol] += _input[filterRow + outputRow,
+                                                         filterCol + outputCol] * filters[node, filterRow, filterCol]
+
 
 # hàm này chỉ tìm max - cần thêm một hàm tìm vị trí - ma trận X sẽ bị sửa đổi
 # gía trị max là giá trị nằm ở đầu mảng X - X[0]
@@ -138,10 +184,53 @@ def matrix_max_kernel(X, blkIdx, unfinsishBlk):
             cuda.threadfence()
         unfinsishBlk = unfinsishBlk - 1
         cuda.threadfence_system()
+
+
 @cuda.jit
-def softmax_backprop(gradient_out, learningRate, weights, biases, softmaxForwardFlattenedInputs,
-                     softmaxForwardInputsShape, preSoftmax):
+def softmax_backprop(gradient_out, learningRate, weights, biases, maxpoolOutputs):
+    '''
+	Thực hiện lan truyền ngược qua softmax layer.
+
+	Input:
+		@ "gradient_out" là gradient của hàm lỗi so với output của hàm "softmax_forward".
+		@ "learningRate" là tốc độ học.
+		@ "weights" là mảng các trọng số của những node trong softmax layer, các trọng số trong một node là mảng một chiều.
+		@ "biases" là mảng các bias của những node trong softmax layer.
+		@ "softmaxForwardFlattenedInputs" là mảng các ma trận input của hàm "softmax_forward" đã được duỗi thẳng thành mảng một chiều.
+		@ "softmaxForwardInputsShape" là một tuple chứa hình dạng của input của hàm "softmax_forward".
+		@ "maxpoolOutputs" là mảng các giá trị trước khi tính softmax trong hàm "softmax_forward".
+
+	Output:
+		@ "d_L_d_inputs" là gradient của hàm lỗi so với input của hàm "softmax_forward".
+	'''
+    maxpoolOutputsLength = maxpoolOutputs.shape[1] * maxpoolOutputs.shape[2] * maxpoolOutputs.shape[3]
+    gradient_err_weights = np.zeros(gradient_out.shape[1], maxpoolOutputsLength)
+    gradient_err_biases = np.zeros(gradient_out.shape[1])
+    gradient_err_inputs = np.zeros((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
+    for i in range(maxpoolOutputs.shape[0]):
+        block_size = (32, 32)
+        grid_size = (math.ceil(maxpoolOutputsLength / block_size[1]), math.ceil(gradient_out[i].shape[1] / block_size[0]))
+        gradient_err_weights_temp = np.zeros((gradient_out.shape[1], maxpoolOutputsLength))
+        dot_kernel[grid_size, block_size](gradient_out[i].reshape(gradient_out.shape[1], 1),
+                                          maxpoolOutputs[i].reshape(1, maxpoolOutputsLength),
+                                          gradient_err_weights_temp)
+        grid_size_1 = (math.ceil(gradient_err_weights.shape[0] / block_size[0]),
+                       math.ceil(gradient_err_weights.shape[1] / block_size[1]))
+        divide_max_kernel[grid_size_1, block_size](gradient_err_weights_temp,
+                                                   maxpoolOutputs.shape[0],
+                                                   gradient_err_weights)
+        for j in range(gradient_out.shape[1]):
+            gradient_err_biases[j] = gradient_out[i, j] / maxpoolOutputs.shape[0]
+        grid_size_2 = (1, 1)
+        dot_kernel[grid_size_2, block_size](gradient_out[i].reshape(1, gradient_out.shape[1]), weights, gradient_err_inputs[i])
+    update_weights_kernel(weights, gradient_err_weights, learning_rate=learningRate)
+    update_biases_kernel(biases, gradient_err_biases, learning_rate=learningRate)
+
+
+def train():
     pass
+
+
 def main():
     print('main function')
 

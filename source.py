@@ -1,4 +1,7 @@
-from source_cuda import matrix_max_kernel
+
+
+
+# from source_cuda import matrix_max_kernel
 from keras.datasets import mnist
 from numba import jit
 from math import exp
@@ -182,7 +185,9 @@ def max(X):
 	"""
     return np.max(X)
 def matrix_max(X):
-    _max = X[0][0]
+    if 0 in X.shape:
+        return 0 , (0,0)
+    _max = X[0, 0]
     _maxRow = 0
     _maxCol = 0
     for row in range(X.shape[0]):
@@ -295,6 +300,8 @@ def maxpool_backprop(d_L_d_out, maxpoolForwardInputs, maxpoolSize):
                 dld_input[node,
                  maxPoolOutput_max_R + row * maxpoolSize, 
                  maxPoolOuput_max_C + col *maxpoolSize] = d_L_d_out[node , row, col]
+                print(_max)
+    print("maxpool back: ", dld_input)
     return dld_input
 
 
@@ -318,9 +325,11 @@ def conv_backprop(d_L_d_out, learningRate, convFilters, normalizedImage):
                     for d_L_d_out_col in range(d_L_d_out.shape[2]):
                         d_filters[idx, filter_row, filter_col] = d_L_d_out[idx,filter_row, filter_col] * normalizedImage[d_L_d_out_row + filter_row,
                            d_L_d_out_col + filter_col]
+                        print(1)
     for idx in range(convFilters.shape[0]):
         for filter_row in range(convFilters.shape[1]):
             for filter_col in range(convFilters.shape[2]):
+                print("next")
                 convFilters[idx, filter_row, filter_row] -= learningRate * d_L_d_out[idx, filter_row, filter_row]
     return None
 
@@ -352,7 +361,7 @@ def train(trainImages, trainLabels, learningRate, convFilters, maxpoolSize, soft
         gradient = softmax_backprop(gradient, learningRate, softmaxWeights, softmaxBiases, softmaxInputs.flatten(),
                                     softmaxInputs.shape, preSoftmax)
         print("gradient: ", gradient)
-        gradient = maxpool_backprop(gradient, maxpoolInputs)
+        gradient = maxpool_backprop(gradient, maxpoolInputs, maxpoolSize)
         gradient = conv_backprop(gradient, learningRate, convFilters, convInput)
 
     # Tính trung bình cost-entropy loss và phần trăm số dự đoán đúng.
