@@ -137,6 +137,46 @@ def matrix_max_kernel(X, blkIdx, unfinsishBlk):
         unfinsishBlk = unfinsishBlk - 1
         cuda.threadfence_system()
 
+@cuda.jit
+def maxpool_forward_kernel(input, poolSize):
+    input_num = input.shape[0]
+    input_h = input.shape[1]
+    input_w = input.shape[2]
+    output_h= input_h/poolSize
+    output_w= input_w/poolSize
+	
+    node = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    outputRow = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
+    outputCol = cuda.blockIdx.z * cuda.blockDim.z + cuda.threadIdx.z
+
+    #output = np.zeros(shape=(filters.shape[0], outputHeight, outputWidth))
+
+    if node > filter.shape[0] or outputRow > output_h or outputCol > output_w:
+        return
+
+    for filterRow in range(filters.shape[1]):
+        for filterCol in range(filters.shape[2]):
+            output[node, outputRow, outputCol] += input[filterRow + outputRow,
+            filterCol + outputCol] * filters[node, filterRow, filterCol]
+
+  '''
+  Thực hiện lan truyền xuôi qua maxpool layer.
+
+  Input:
+  	@ "input" là mảng các output của hàm "conv_forward".
+  	@ "poolSize" là kích thước của maxpool, maxpool là ma trận vuông.
+  
+  Output:
+  	@ Mảng các output sau khi đi qua maxpool layer.
+  '''
+#   outputShape = (input.shape[0], math.ceil(input.shape[1] / poolSize), math.ceil(input.shape[2] / poolSize))
+#   output = np.zeros(shape=outputShape)
+#   for node in range(input.shape[0]):
+#     for row in range(outputShape[1]):
+#       for col in range(outputShape[2]):
+#         max, _ = matrix_max(input[node, (row * poolSize):(poolSize * (row + 1)), (col * poolSize):(poolSize * (col + 1))])
+#         output[node, row, col] = max
+#   return output
 
 def main():
     print('main function')

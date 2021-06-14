@@ -1,3 +1,4 @@
+import math
 from keras.datasets import mnist
 from numba import jit
 from math import exp
@@ -133,14 +134,25 @@ def softmax(X):
 
 	Input:
 		@ "X" là mảng một chiều.
+		
 
 	Output:
 		@ Mảng các giá trị softmax được tính từ X.
 	'''
+
+	sum =0
+	for i in X:
+		sum += math.exp(i)
+	output = np.zeros(len(X))
+	for i in range(len(X)):
+		output[i] = math.exp(X[i]) / sum
+	return output
+		
+
 	pass
 
 @jit
-def gen_softmax_weights(inputLength, numNode):
+def gen_softmax_weights(input, inputLength, numNode):
 	'''
 	Khởi tạo "numNode" trọng số với kích thước là "length" được gán các giá trị ngẫu nhiên.
 
@@ -151,20 +163,10 @@ def gen_softmax_weights(inputLength, numNode):
 	Output:
 		@ Mảng "numNode" phần tử có kích thước là "inputLength".
 	'''
-	pass
+	numNode = np.random.rand(numNode, inputLength) / inputLength
+	return numNode
+
 	
-@jit
-def flatten(X):
-	'''
-	Duỗi thẳng X thành mảng một chiều.
-
-	Input:
-		@ "X" là mảng với bất cứ chiều nào.
-
-	Output:
-		@ Mảng một chiều.
-	'''
-	pass
 
 @jit
 def softmax_forward(input, weights, biases):
@@ -181,7 +183,12 @@ def softmax_forward(input, weights, biases):
 		@ Mảng các giá trị sau khi tính softmax.
 		@ Shape của "input".
 	'''
-	pass
+	input = input.reshape(1, input.shape[0] * input.shape[1] * input.shape[2])
+	preSoftmax = dot(input, weights.transpose()).flatten()
+	for i in range(len(preSoftmax)):
+		preSoftmax[i] += biases[i]
+	postSoftmax = softmax(preSoftmax)
+	return preSoftmax, postSoftmax
 
 @jit
 def max(X):
