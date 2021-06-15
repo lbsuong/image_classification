@@ -194,6 +194,24 @@ def find_max_index_kernel(X, max_value, index):
         index = (row, col)
 
 
+#     Thực hiện lan truyền xuôi qua maxpool layer.
+
+#   Input:
+#   	@ "input" là mảng các output của hàm "conv_forward".
+#   	@ "poolSize" là kích thước của maxpool, maxpool là ma trận vuông.
+  
+#   Output:
+#   	@ Mảng các output sau khi đi qua maxpool layer.
+
+#   outputShape = (input.shape[0], math.ceil(input.shape[1] / poolSize), math.ceil(input.shape[2] / poolSize))
+#   output = np.zeros(shape=outputShape)
+#   for node in range(input.shape[0]):
+#     for row in range(outputShape[1]):
+#       for col in range(outputShape[2]):
+#         max, _ = matrix_max(input[node, (row * poolSize):(poolSize * (row + 1)), (col * poolSize):(poolSize * (col + 1))])
+#         output[node, row, col] = max
+#   return output
+
 @cuda.jit
 def maxpool_forward_kernel(input, output, poolSize):
     input_node = input.shape[0]
@@ -201,7 +219,6 @@ def maxpool_forward_kernel(input, output, poolSize):
     input_w = input.shape[2]
     output_h= input_h/poolSize
     output_w= input_w/poolSize
-	
     node = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
     outputRow = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
     outputCol = cuda.blockIdx.z * cuda.blockDim.z + cuda.threadIdx.z
@@ -217,29 +234,8 @@ def maxpool_forward_kernel(input, output, poolSize):
             if(input[node,outputRow*poolSize + filterRow, outputCol*poolSize + filterCol] > max):
                 temp_max = input[node,outputRow*poolSize + filterRow, outputCol*poolSize + filterCol]
     output[node, outputRow, outputCol] = temp_max
+
     return output
-
-
-
-  '''
-  Thực hiện lan truyền xuôi qua maxpool layer.
-
-  Input:
-  	@ "input" là mảng các output của hàm "conv_forward".
-  	@ "poolSize" là kích thước của maxpool, maxpool là ma trận vuông.
-  
-  Output:
-  	@ Mảng các output sau khi đi qua maxpool layer.
-  '''
-#   outputShape = (input.shape[0], math.ceil(input.shape[1] / poolSize), math.ceil(input.shape[2] / poolSize))
-#   output = np.zeros(shape=outputShape)
-#   for node in range(input.shape[0]):
-#     for row in range(outputShape[1]):
-#       for col in range(outputShape[2]):
-#         max, _ = matrix_max(input[node, (row * poolSize):(poolSize * (row + 1)), (col * poolSize):(poolSize * (col + 1))])
-#         output[node, row, col] = max
-#   return output
-
 def main():
     print('main function')
 
