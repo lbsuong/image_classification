@@ -210,7 +210,7 @@ def find_max_index_kernel(X, max_value, index):
 #       for col in range(outputShape[2]):
 #         max, _ = matrix_max(input[node, (row * poolSize):(poolSize * (row + 1)), (col * poolSize):(poolSize * (col + 1))])
 #         output[node, row, col] = max
-#   return output
+#   return output     
 
 @cuda.jit
 def maxpool_forward_kernel(input, output, poolSize):
