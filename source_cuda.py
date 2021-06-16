@@ -90,6 +90,7 @@ def update_weights_kernel(W, gradient_w, learning_rate):
         return
     W[row, col] = W[row, col] - learning_rate * gradient_w[row, col]
 
+
 @cuda.jit
 def update_biases_kernel(B, gradient_b, learning_rate):
     idx = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
@@ -107,7 +108,7 @@ def devide_all_kernel(X,z):
 
 @cuda.jit
 def conv_forward_kernel(_input, filters, output, outputHeight, outputWidth):
-    '''
+    """
         Thực hiện lan truyền xuôi qua conv layer.
 
     Input:
@@ -116,7 +117,7 @@ def conv_forward_kernel(_input, filters, output, outputHeight, outputWidth):
 
     Output:
             @ Mảng các output sau khi đi qua conv layer.
-    '''
+    """
 
     node = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
     outputRow = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
@@ -187,8 +188,8 @@ def matrix_max_kernel(X, blkIdx, unfinsishBlk):
 
 
 @cuda.jit
-def softmax_backprop(gradient_out, learningRate, weights, biases, maxpoolOutputs):
-    '''
+def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, maxpoolOutputs):
+    """
 	Thực hiện lan truyền ngược qua softmax layer.
 
 	Input:
@@ -202,14 +203,15 @@ def softmax_backprop(gradient_out, learningRate, weights, biases, maxpoolOutputs
 
 	Output:
 		@ "d_L_d_inputs" là gradient của hàm lỗi so với input của hàm "softmax_forward".
-	'''
+	"""
     maxpoolOutputsLength = maxpoolOutputs.shape[1] * maxpoolOutputs.shape[2] * maxpoolOutputs.shape[3]
     gradient_err_weights = np.zeros(gradient_out.shape[1], maxpoolOutputsLength)
     gradient_err_biases = np.zeros(gradient_out.shape[1])
     gradient_err_inputs = np.zeros((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
     for i in range(maxpoolOutputs.shape[0]):
         block_size = (32, 32)
-        grid_size = (math.ceil(maxpoolOutputsLength / block_size[1]), math.ceil(gradient_out[i].shape[1] / block_size[0]))
+        grid_size = (
+            math.ceil(maxpoolOutputsLength / block_size[1]), math.ceil(gradient_out[i].shape[1] / block_size[0]))
         gradient_err_weights_temp = np.zeros((gradient_out.shape[1], maxpoolOutputsLength))
         dot_kernel[grid_size, block_size](gradient_out[i].reshape(gradient_out.shape[1], 1),
                                           maxpoolOutputs[i].reshape(1, maxpoolOutputsLength),
@@ -222,9 +224,33 @@ def softmax_backprop(gradient_out, learningRate, weights, biases, maxpoolOutputs
         for j in range(gradient_out.shape[1]):
             gradient_err_biases[j] = gradient_out[i, j] / maxpoolOutputs.shape[0]
         grid_size_2 = (1, 1)
-        dot_kernel[grid_size_2, block_size](gradient_out[i].reshape(1, gradient_out.shape[1]), weights, gradient_err_inputs[i])
+        dot_kernel[grid_size_2, block_size](gradient_out[i].reshape(1, gradient_out.shape[1]), weights,
+                                            gradient_err_inputs[i])
     update_weights_kernel(weights, gradient_err_weights, learning_rate=learningRate)
     update_biases_kernel(biases, gradient_err_biases, learning_rate=learningRate)
+    return gradient_err_inputs.reshape(maxpoolOutputs.shape)
+
+
+def conv_backward_kernel(d_L_d_out, learningRate, convFilters, normalizedImages):
+    d_L_d_filters = np.zeros(convFilters.shape)
+    node = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    outputRow = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
+    outputCol = cuda.blockIdx.z * cuda.blockDim.z + cuda.threadIdx.z
+    if node > d_L_d_filters.shape[0] or outputRow > d_L_d_filters.shape[1] or outputCol > d_L_d_filters.shape[2]:
+        return
+    for image in range(normalizedImages.shape[0]):
+        for d_L_d_out_row in range(d_L_d_out.shape[2]):
+            for d_L_d_out_col in range(d_L_d_out.shape[3]):
+                d_L_d_filters[node, outputRow, outputCol] = d_L_d_filters[node, outputRow, outputCol] + d_L_d_out[
+                    image, node, d_L_d_out_row, d_L_d_out_col] * normalizedImages[
+                                                                image, d_L_d_out_row + outputRow, d_L_d_out_col + outputCol]
+    d_L_d_filters[node, outputRow, outputCol] = d_L_d_filters[node, outputRow, outputCol] / normalizedImages.shape[0]
+    convFilters[node, outputRow, outputCol] = convFilters[node, outputRow, outputCol] - learningRate * d_L_d_filters[
+        node, outputRow, outputCol]
+
+
+# def conv_backprop_use_gpu(d_L_d_out, learningRate, convFilters, normalizedImages):
+#     d_L_d_filters = np.zeros(convFilters.shape)
 
 
 def train():
