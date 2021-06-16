@@ -139,6 +139,30 @@ def matrix_max_kernel(X, blkIdx, unfinsishBlk):
         cuda.threadfence_system()
 
 
+@cuda.jit
+def maxpool_forward_kernel(input, output, poolSize):
+    input_node = input.shape[0]
+    input_h = input.shape[1]
+    input_w = input.shape[2]
+    output_h= input_h/poolSize
+    output_w= input_w/poolSize
+    node = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    outputRow = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
+    outputCol = cuda.blockIdx.z * cuda.blockDim.z + cuda.threadIdx.z
+    # c, r = cuda.grid(2)
+
+    if node > input_node or outputRow > output_h or outputCol > output_w:
+        return
+    output[node, outputRow, outputCol]= input[node,outputRow*poolSize, outputCol*poolSize]
+    temp_max = input[node,outputRow*poolSize, outputCol*poolSize]
+
+    for filterRow in range(poolSize):
+        for filterCol in range(1,poolSize):
+            if(input[node,outputRow*poolSize + filterRow, outputCol*poolSize + filterCol] > max):
+                temp_max = input[node,outputRow*poolSize + filterRow, outputCol*poolSize + filterCol]
+    output[node, outputRow, outputCol] = temp_max
+
+    return output
 def main():
     print('main function')
 
