@@ -207,6 +207,52 @@ def maxpool_forward(input, poolSize,block_size = (32, 32)):
     grid_size = (math.ceil(output_h / block_size[0]),math.ceil(output_w / block_size[1]))
     maxpool_forward_kernel[grid_size, block_size](input, poolSize, output)
     return output
+
+
+@cuda.jit
+def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, maxpoolOutputs):
+    """
+	Thực hiện lan truyền ngược qua softmax layer.
+
+	Input:
+		@ "gradient_out" là gradient của hàm lỗi so với output của hàm "softmax_forward".
+		@ "learningRate" là tốc độ học.
+		@ "weights" là mảng các trọng số của những node trong softmax layer, các trọng số trong một node là mảng một chiều.
+		@ "biases" là mảng các bias của những node trong softmax layer.
+		@ "softmaxForwardFlattenedInputs" là mảng các ma trận input của hàm "softmax_forward" đã được duỗi thẳng thành mảng một chiều.
+		@ "softmaxForwardInputsShape" là một tuple chứa hình dạng của input của hàm "softmax_forward".
+		@ "maxpoolOutputs" là mảng các giá trị trước khi tính softmax trong hàm "softmax_forward".
+
+	Output:
+		@ "d_L_d_inputs" là gradient của hàm lỗi so với input của hàm "softmax_forward".
+	"""
+    maxpoolOutputsLength = maxpoolOutputs.shape[1] * maxpoolOutputs.shape[2] * maxpoolOutputs.shape[3]
+    gradient_err_weights = np.zeros(gradient_out.shape[1], maxpoolOutputsLength)
+    gradient_err_biases = np.zeros(gradient_out.shape[1])
+    gradient_err_inputs = np.zeros((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
+    for i in range(maxpoolOutputs.shape[0]):
+        block_size = (32, 32)
+        grid_size = (
+            math.ceil(maxpoolOutputsLength / block_size[1]), math.ceil(gradient_out[i].shape[1] / block_size[0]))
+        gradient_err_weights_temp = np.zeros((gradient_out.shape[1], maxpoolOutputsLength))
+        dot_kernel[grid_size, block_size](gradient_out[i].reshape(gradient_out.shape[1], 1),
+                                          maxpoolOutputs[i].reshape(1, maxpoolOutputsLength),
+                                          gradient_err_weights_temp)
+        grid_size_1 = (math.ceil(gradient_err_weights.shape[0] / block_size[0]),
+                       math.ceil(gradient_err_weights.shape[1] / block_size[1]))
+        divide_max_kernel[grid_size_1, block_size](gradient_err_weights_temp,
+                                                   maxpoolOutputs.shape[0],
+                                                   gradient_err_weights)
+        for j in range(gradient_out.shape[1]):
+            gradient_err_biases[j] = gradient_out[i, j] / maxpoolOutputs.shape[0]
+        grid_size_2 = (1, 1)
+        dot_kernel[grid_size_2, block_size](gradient_out[i].reshape(1, gradient_out.shape[1]), weights,
+                                            gradient_err_inputs[i])
+    update_weights_kernel(weights, gradient_err_weights, learning_rate=learningRate)
+    update_biases_kernel(biases, gradient_err_biases, learning_rate=learningRate)
+    return gradient_err_inputs.reshape(maxpoolOutputs.shape)
+
+
 def main():
     print('main function')
 
