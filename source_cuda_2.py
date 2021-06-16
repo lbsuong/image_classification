@@ -1,10 +1,13 @@
 from re import U
 import time
 import math
+from typing import BinaryIO
 from unittest import signals
 import numba
-from numba.cuda.stubs import blockDim, threadIdx
+from numba.cuda.stubs import blockDim, blockIdx, gridsize, threadIdx
 import numpy as np
+from numpy.core.fromnumeric import shape
+from numpy.testing._private.utils import gisfinite
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten
@@ -31,7 +34,7 @@ def dot_kernel(A, B, C):
     '''
     y = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
     x = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
-    if y > C.shape[0] or x > C.shape[1]:
+    if y >= C.shape[0] or x >= C.shape[1]:
         return
     C[x, y] = 0
     for col in range(A.shape[1]):
@@ -57,47 +60,6 @@ def normalize_kernel(X):
     X[row, col] = (X[row, col]/255) - 0.5
 
 # có thể sử dụng SMEM để tối ưu trên version 2
-
-
-@cuda.jit
-def max_matrix_kernel(result, values):
-    """
-    hàm hỗ trợ cho hàm matrix_max
-    tìm max trong mảng values, lưu vào result[0,1]
-    """
-    i, j = cuda.grid(2)
-    # Atomically store to result[0,1,2] from values[i, j, k]
-    cuda.atomic.max(result, (0, 1), values[i, j])
-
-
-@cuda.jit
-def max_index_kernel(max_value, X, index):
-    '''
-    hàm hỗ trợ cho hàm matrix_max
-    tìm chỉ số của giá trị max trong mảng X
-    '''
-    row, col = cuda.grid(2)
-    if row >= X.shape[0] or col >= X.shape[1]:
-        return
-    if X[row, col] == max_value:
-        index[0] = row
-        index[1] = col
-
-
-def matrix_max(X, blockSize=(32, 32)):
-    '''
-    sử dụng hàm này để gọi trên host
-    cấu tham số tương tự như hàm trên cpu
-    '''
-    result = np.zeros((2, 2))
-    index = np.array([0, 0])
-    blockspergrid_y = math.ceil(X.shape[1] / blockSize[1])
-    blockspergrid_x = math.ceil(X.shape[0] / blockSize[0])
-    gridSize = (blockspergrid_x, blockspergrid_y)
-    max_matrix_kernel[gridSize, blockSize](result, X)
-    max_value = result[0, 1]
-    max_index_kernel[gridSize, blockSize](max_value, X, index)
-    return max_value, (index[0], index[1])
 
 
 @cuda.jit
@@ -129,8 +91,8 @@ def conv_forward_kernel(input, filters, output, outputHeight, outputWidth):
 
 # hàm này chỉ tìm max - cần thêm một hàm tìm vị trí - ma trận X sẽ bị sửa đổi
 # gía trị max là giá trị nằm ở đầu mảng X - X[0]
-# blkIdx = blockDim.x - 1
-# unfinishBlk = blockDim.x : số lượng những block chưa hoàn thành
+# blkIdx = gridSize.x - 1
+# unfinishBlk = gridSize.x : số lượng những block chưa hoàn thành
 
 
 @cuda.jit
@@ -181,31 +143,118 @@ def matrix_max_kernel(X, blkIdx, unfinsishBlk):
 
 
 @cuda.jit
-def maxpool_forward_kernel(input, output, poolSize):
-    input_node = input.shape[0]
-    input_h = input.shape[1]
-    input_w = input.shape[2]
-    output_h = input_h/poolSize
-    output_w = input_w/poolSize
-    node = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
-    outputRow = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
-    outputCol = cuda.blockIdx.z * cuda.blockDim.z + cuda.threadIdx.z
-    # c, r = cuda.grid(2)
+def find_max_index_kernel(X, max_value, index):
+    col = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    row = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
 
-    if node > input_node or outputRow > output_h or outputCol > output_w:
+    if X[row, col] == max_value:
+        index = (row, col)
+
+
+# hàm này chỉ được gọi trong hàm kernel
+@cuda.jit(device=True)
+def gen_softmax_weights_kernel(numNode, inputLength):
+    return np.random.rand(numNode, inputLength) / inputLength
+
+
+# hàm này tính tổng của ma trận X - hỗ trợ cho hàm softmax()
+@cuda.jit
+def total_kernel(X, blkIdx, unfinsishBlk):
+    # blkIdx = cuda.device_array(shape=(1,1), dtype=np.int)
+    newBlkIdx = cuda.shared.array((1, 1), np.dtype(int))
+    # if cuda.threadIdx.x == 0 and (blkIdx[0] < 0 or blkIdx[0] > cuda.blockDim.x):
+    #     blkIdx[0] = 0
+
+    if cuda.threadIdx == 0:
+        newBlkIdx[0] = blkIdx
+        blkIdx = blkIdx - 1
+    # cuda.threadfence_system()
+    cuda.syncthreads()
+
+    nBefore = cuda.blockDim.x * newBlkIdx[0] * 2
+
+    stride = 1
+    while stride < cuda.blockDim.x:
+        curr_idx = nBefore + stride * cuda.threadIdx.x
+        next_idx = nBefore + stride * cuda.threadIdx.x + stride
+        X[curr_idx] += X[next_idx]
+
+        cuda.syncthreads()
+        stride = stride * 2
+
+    if cuda.threadIdx.x == 0:
+        if newBlkIdx[0] < cuda.blockDim.x - 1:
+            # chở block phía sau thực hiện xong
+            while unfinsishBlk > newBlkIdx[0] + 1:
+                pass
+            curr_idx = nBefore
+            next_idx = nBefore + 2 * cuda.blockDim.x
+            X[curr_idx] += X[next_idx]
+            cuda.threadfence()
+        unfinsishBlk = unfinsishBlk - 1
+        cuda.threadfence_system()
+
+# hàm này tính ma trận output của softmax - hỗ trợ cho hàm softmax()
+
+
+@cuda.jit
+def output_softmax_kernel(X, total, output):
+    idx = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    if idx > len(X):
         return
-    output[node, outputRow, outputCol] = input[node,
-                                               outputRow*poolSize, outputCol*poolSize]
-    temp_max = input[node, outputRow*poolSize, outputCol*poolSize]
+    output[idx] = math.exp(X[idx]) / total
 
-    for filterRow in range(poolSize):
-        for filterCol in range(1, poolSize):
-            if(input[node, outputRow*poolSize + filterRow, outputCol*poolSize + filterCol] > max):
-                temp_max = input[node, outputRow*poolSize +
-                                 filterRow, outputCol*poolSize + filterCol]
-    output[node, outputRow, outputCol] = temp_max
 
+@jit
+def softmax(X, blockSize):
+    X_d = cuda.to_device(X)
+    X_d_2 = cuda.to_device(X)
+    gridSize = (len(X) + (blockSize - 1)) // blockSize
+    total_kernel[gridSize, blockSize](X_d, gridSize - 1, gridSize)
+    cuda.synchronize()
+    output = np.empty(shape=(1, len(X)))
+    # output = cuda.device_array(shape=(1,len(X)))
+    output_softmax_kernel[gridSize, blockSize](X_d_2, X_d[0], output)
+    cuda.synchronize()
     return output
+
+# hỗ trợ cho hàm softmax_forward
+# preSoftmax = dot(input, weights.transpose()).flatten()
+
+
+@cuda.jit
+def pre_softmax_kernel(biases, preSoftmax):
+    idx = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    if idx >= len(preSoftmax):
+        return
+    preSoftmax[idx] += biases[idx]
+
+
+@jit
+def softmax_forward(input, weights, biases, blockSize):
+    input = input.reshape(1, input.shape[0] * input.shape[1] * input.shape[2])
+    preSoftmax = np.empty(shape=(input.shape[0], weights.transpose().shape[1]))
+    blockspergrid_x = math.ceil(preSoftmax.shape[0] / blockSize[0])
+    blockspergrid_y = math.ceil(preSoftmax.shape[1] / blockSize[1])
+    gridSize = (blockspergrid_x, blockspergrid_y)
+    dot_kernel[gridSize, blockSize](input, weights.transpose(), preSoftmax)
+    cuda.synchronize()
+    postSoftmax = softmax(preSoftmax, blockSize.x)
+    return preSoftmax, postSoftmax
+
+
+@jit
+def cost_entropy_loss(x):
+    '''
+    Hàm tính đỘ lỗi.
+
+    Input:
+          @ "x" là giá trị lớn nhất của mảng trả về từ hàm "softmax_forward". 
+
+    Output:
+          @ Độ lỗi cost-entropy loss.
+    '''
+    return -math.log(x)
 
 
 def main():
