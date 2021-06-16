@@ -179,35 +179,34 @@ def matrix_max_kernel(X, blkIdx, unfinsishBlk):
         unfinsishBlk = unfinsishBlk - 1
         cuda.threadfence_system()
 
-
 @cuda.jit
 def maxpool_forward_kernel(input, output, poolSize):
-    input_node = input.shape[0]
-    input_h = input.shape[1]
-    input_w = input.shape[2]
-    output_h = input_h/poolSize
-    output_w = input_w/poolSize
-    node = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
-    outputRow = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
-    outputCol = cuda.blockIdx.z * cuda.blockDim.z + cuda.threadIdx.z
-    # c, r = cuda.grid(2)
-
-    if node > input_node or outputRow > output_h or outputCol > output_w:
-        return
-    output[node, outputRow, outputCol] = input[node,
-                                               outputRow*poolSize, outputCol*poolSize]
-    temp_max = input[node, outputRow*poolSize, outputCol*poolSize]
+    c, r = cuda.grid(2)
+    for node in range(input.shape[0]):
+        if r < output.shape[1] and c < output.shape[2]:
+            output[node, r, c] = 0
+    temp_max = input[node,r*poolSize, c*poolSize]
 
     for filterRow in range(poolSize):
-        for filterCol in range(1, poolSize):
-            if(input[node, outputRow*poolSize + filterRow, outputCol*poolSize + filterCol] > max):
-                temp_max = input[node, outputRow*poolSize +
-                                 filterRow, outputCol*poolSize + filterCol]
-    output[node, outputRow, outputCol] = temp_max
+        for filterCol in range(1,poolSize):
+            if(input[node,r*poolSize + filterRow, c*poolSize + filterCol] > max):
+                temp_max = input[node,r*poolSize + filterRow, c*poolSize + filterCol]
+    output[node, r, c] = temp_max
 
     return output
 
-
+@jit
+def maxpool_forward(input, poolSize,block_size = (32, 32)):
+    input_num = input.shape[0]
+    input_h = input.shape[1]
+    input_w = input.shape[2]
+    output_num = input_num
+    output_h= input_h/poolSize
+    output_w= input_w/poolSize
+    output = np.zeros(shape=(output_num, output_h, output_w))
+    grid_size = (math.ceil(output_h / block_size[0]),math.ceil(output_w / block_size[1]))
+    maxpool_forward_kernel[grid_size, block_size](input, poolSize, output)
+    return output
 def main():
     print('main function')
 
