@@ -253,6 +253,26 @@ def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, max
     return gradient_err_inputs.reshape(maxpoolOutputs.shape)
 
 
+@cuda.jit
+def conv_backward_kernel(d_L_d_out, learningRate, convFilters, normalizedImages):
+    d_L_d_filters = np.zeros(convFilters.shape)
+    node = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    outputRow = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
+    outputCol = cuda.blockIdx.z * cuda.blockDim.z + cuda.threadIdx.z
+    if node > d_L_d_filters.shape[0] or outputRow > d_L_d_filters.shape[1] or outputCol > d_L_d_filters.shape[2]:
+        return
+    for image in range(normalizedImages.shape[0]):
+        for d_L_d_out_row in range(d_L_d_out.shape[2]):
+            for d_L_d_out_col in range(d_L_d_out.shape[3]):
+                d_L_d_filters[node, outputRow, outputCol] = d_L_d_filters[node, outputRow, outputCol] + d_L_d_out[
+                    image, node, d_L_d_out_row, d_L_d_out_col] * normalizedImages[
+                                                                image, d_L_d_out_row + outputRow, d_L_d_out_col + outputCol]
+    d_L_d_filters[node, outputRow, outputCol] = d_L_d_filters[node, outputRow, outputCol] / normalizedImages.shape[0]
+    convFilters[node, outputRow, outputCol] = convFilters[node, outputRow, outputCol] - learningRate * d_L_d_filters[
+        node, outputRow, outputCol]
+
+	
+
 def main():
     print('main function')
 
