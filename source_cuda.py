@@ -208,6 +208,21 @@ def maxpool_forward(input, poolSize,block_size = (32, 32)):
     maxpool_forward_kernel[grid_size, block_size](input, poolSize, output)
     return output
 
+@cuda.jit
+def update_weights_kernel(W, gradient_w, learning_rate):
+    row = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
+    col = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    if row > W.shape[0] or col > W.shape[1]:
+        return
+    W[row, col] = W[row, col] - learning_rate * gradient_w[row, col]
+
+
+@cuda.jit
+def update_biases_kernel(B, gradient_b, learning_rate):
+    idx = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+    if idx < B.shape[0]:
+        B[idx] = B[idx] - learning_rate * gradient_b[idx]
+
 
 @cuda.jit
 def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, maxpoolOutputs):
