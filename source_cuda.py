@@ -205,32 +205,70 @@ def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, max
 		@ "d_L_d_inputs" là gradient của hàm lỗi so với input của hàm "softmax_forward".
 	"""
     maxpoolOutputsLength = maxpoolOutputs.shape[1] * maxpoolOutputs.shape[2] * maxpoolOutputs.shape[3]
-    gradient_err_weights = np.zeros(gradient_out.shape[1], maxpoolOutputsLength)
+    # gradient_err_weights = np.zeros(gradient_out.shape[1], maxpoolOutputsLength)
     gradient_err_biases = np.zeros(gradient_out.shape[1])
-    gradient_err_inputs = np.zeros((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
+    # gradient_err_inputs = np.zeros((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
+    cuda_gradient_err_inputs = cuda.device_array((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
+    cuda_gradient_err_weights = cuda.device_array((gradient_out.shape[1], maxpoolOutputsLength))
+    cuda_gradient_err_biases = cuda.device_array(gradient_out.shape[1])
+    cuda_weights = cuda.to_device(weights)
+    cuda_biases = cuda.to_device(biases)
     for i in range(maxpoolOutputs.shape[0]):
         block_size = (32, 32)
         grid_size = (
             math.ceil(maxpoolOutputsLength / block_size[1]), math.ceil(gradient_out[i].shape[1] / block_size[0]))
-        gradient_err_weights_temp = np.zeros((gradient_out.shape[1], maxpoolOutputsLength))
-        dot_kernel[grid_size, block_size](gradient_out[i].reshape(gradient_out.shape[1], 1),
-                                          maxpoolOutputs[i].reshape(1, maxpoolOutputsLength),
-                                          gradient_err_weights_temp)
-        grid_size_1 = (math.ceil(gradient_err_weights.shape[0] / block_size[0]),
-                       math.ceil(gradient_err_weights.shape[1] / block_size[1]))
-        divide_max_kernel[grid_size_1, block_size](gradient_err_weights_temp,
+
+        cuda_gradient_out_ = cuda.to_device(gradient_out[i].reshape(gradient_out.shape[1], 1))
+        cuda_maxpoolOutputs = cuda.to_device(maxpoolOutputs[i].reshape(1, maxpoolOutputsLength))
+        cuda_gradient_err_weights_temp = cuda.device_array((gradient_out.shape[1], maxpoolOutputsLength))
+
+        dot_kernel[grid_size, block_size](cuda_gradient_out_,
+                                          cuda_maxpoolOutputs,
+                                          cuda_gradient_err_weights_temp)
+
+        cuda.synchronize()
+        # gradient_err_weights_temp = cuda_gradient_err_weights_temp.copy_to_host()
+        grid_size_1 = (math.ceil(cuda_gradient_err_weights.shape[0] / block_size[0]),
+                       math.ceil(cuda_gradient_err_weights.shape[1] / block_size[1]))
+
+        divide_max_kernel[grid_size_1, block_size](cuda_gradient_err_weights_temp,
                                                    maxpoolOutputs.shape[0],
-                                                   gradient_err_weights)
+                                                   cuda_gradient_err_weights)
+        gradient_err_weights_1 = cuda_gradient_err_weights.copy_to_host()
         for j in range(gradient_out.shape[1]):
             gradient_err_biases[j] = gradient_out[i, j] / maxpoolOutputs.shape[0]
         grid_size_2 = (1, 1)
-        dot_kernel[grid_size_2, block_size](gradient_out[i].reshape(1, gradient_out.shape[1]), weights,
-                                            gradient_err_inputs[i])
-    update_weights_kernel(weights, gradient_err_weights, learning_rate=learningRate)
-    update_biases_kernel(biases, gradient_err_biases, learning_rate=learningRate)
+        dot_kernel[grid_size_2, block_size](cuda_gradient_out_, cuda_weights,
+                                            cuda_gradient_err_inputs[i])
+    gradient_err_inputs = cuda_gradient_err_inputs.copy_to_host()
+    update_weights_kernel(cuda_weights, cuda_gradient_err_weights, learning_rate=learningRate)
+    update_biases_kernel(cuda_biases, cuda_gradient_err_biases, learning_rate=learningRate)
+    weights = cuda_weights.copy_to_host()
+    biases = cuda_biases.copy_to_host()
     return gradient_err_inputs.reshape(maxpoolOutputs.shape)
 
 
+def maxpool_backward_kernel(d_L_d_inputs,d_L_d_out, maxPositions, maxpoolSize, convOutputsShape):
+    pass
+
+
+def maxpool_backward_use_kernel(d_L_d_out, maxPositions, maxpoolSize, convOutputsShape):
+    """
+      Thực hiện lan truyền ngược qua maxpool layer.
+
+      Input:
+      	@ "d_L_d_out" là gradient của hàm lỗi so với output của hàm "maxpool_forward".
+      	@ "convForwardOutputs" là mảng các input của hàm "maxpool_forward".
+
+      Output:
+      	@ "d_L_d_input" là gradient của hàm lỗi so với input của hàm "maxpool_forward".
+    """
+    d_L_d_inputs = np.zeros((d_L_d_out.shape[0], convOutputsShape[0], convOutputsShape[1], convOutputsShape[2]))
+    # maxpool_backward_kernel[]
+    pass
+
+
+@cuda.jit
 def conv_backward_kernel(d_L_d_out, learningRate, convFilters, normalizedImages):
     d_L_d_filters = np.zeros(convFilters.shape)
     node = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
