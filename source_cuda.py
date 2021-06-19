@@ -222,9 +222,8 @@ def divide_max_kernel(X, _max, X_return):
     """
     row = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
     col = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
-    if row > X.shape[0] or col > X.shape[1]:
-        return
-    X_return[row, col] = (X[row, col] / _max)
+    if row < X.shape[0] or col < X.shape[1]:
+    	X_return[row, col] = X_return[row, col] + (X[row, col] / _max)
 
 @cuda.jit
 def update_weights_kernel(W, gradient_w, learning_rate):
@@ -271,7 +270,7 @@ def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, max
     for i in range(maxpoolOutputs.shape[0]):
         block_size = (32, 32)
         grid_size = (
-            math.ceil(maxpoolOutputsLength / block_size[1]), math.ceil(gradient_out[i].shape[1] / block_size[0]))
+            math.ceil(maxpoolOutputsLength / block_size[0]), math.ceil(gradient_out.shape[1] / block_size[1]))
 
         cuda_gradient_out_ = cuda.to_device(gradient_out[i].reshape(gradient_out.shape[1], 1))
         cuda_maxpoolOutputs = cuda.to_device(maxpoolOutputs[i].reshape(1, maxpoolOutputsLength))
@@ -280,8 +279,7 @@ def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, max
         dot_kernel[grid_size, block_size](cuda_gradient_out_,
                                           cuda_maxpoolOutputs,
                                           cuda_gradient_err_weights_temp)
-
-        cuda.synchronize()
+	
         # gradient_err_weights_temp = cuda_gradient_err_weights_temp.copy_to_host()
         grid_size_1 = (math.ceil(cuda_gradient_err_weights.shape[0] / block_size[0]),
                        math.ceil(cuda_gradient_err_weights.shape[1] / block_size[1]))
