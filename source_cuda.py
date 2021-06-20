@@ -101,36 +101,28 @@ def matrix_max(X, blockSize=(32, 32)):
 
 
 @cuda.jit
-def conv_forward_kernel(input, filters, output, outputHeight, outputWidth):
+def conv_forward_kernel(input, filters, output):
+    c, r = cuda.grid(2)
+    for node in range(filters.shape[0]):
+        if r < output.shape[1] and c < output.shape[2]:
+            output[node, r, c] = 0
+            for filter_row in range(filters.shape[1]):
+                for filter_col in range(filters.shape[2]):
+                    output[node, r, c] += input[r + filter_row, c +
+                                                filter_col] * filters[node, filter_row, filter_col]
+
+
+def conv_forward(convInput, filters, block_size=(32, 32)):
     '''
-        Thực hiện lan truyền xuôi qua conv layer.
-
-    Input:
-            @ "input" là ma trận các giá trị của hình ảnh đầu vào sau khi được chuẩn hoá.
-            @ "filters" là mảng các ma trận filter được tạo bởi hàm "gen_conv_filters".
-
-    Output:
-            @ Mảng các output sau khi đi qua conv layer.
+    for host calling
     '''
+    convOutput = np.empty((filters.shape[0], convInput.shape[0] - filters.shape[1] +
+                          1, convInput.shape[1] - filters.shape[2] + 1), dtype=float)
 
-    node = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
-    outputRow = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
-    outputCol = cuda.blockIdx.z * cuda.blockDim.z + cuda.threadIdx.z
-
-    #output = np.zeros(shape=(filters.shape[0], outputHeight, outputWidth))
-
-    if node > filter.shape[0] or outputRow > outputHeight or outputCol > outputWidth:
-        return
-
-    for filterRow in range(filters.shape[1]):
-        for filterCol in range(filters.shape[2]):
-            output[node, outputRow, outputCol] += input[filterRow + outputRow,
-                                                        filterCol + outputCol] * filters[node, filterRow, filterCol]
-
-# hàm này chỉ tìm max - cần thêm một hàm tìm vị trí - ma trận X sẽ bị sửa đổi
-# gía trị max là giá trị nằm ở đầu mảng X - X[0]
-# blkIdx = blockDim.x - 1
-# unfinishBlk = blockDim.x : số lượng những block chưa hoàn thành
+    grid_size = (math.ceil(convOutput.shape[2] / block_size[0]),
+                 math.ceil(convOutput.shape[1] / block_size[1]))
+    conv_forward_kernel[grid_size, block_size](convInput, filters, convOutput)
+    return convOutput
 
 
 @cuda.jit
@@ -179,32 +171,36 @@ def matrix_max_kernel(X, blkIdx, unfinsishBlk):
         unfinsishBlk = unfinsishBlk - 1
         cuda.threadfence_system()
 
+
 @cuda.jit
 def maxpool_forward_kernel(input, output, poolSize):
     c, r = cuda.grid(2)
     for node in range(input.shape[0]):
         if r < output.shape[1] and c < output.shape[2]:
             output[node, r, c] = 0
-    temp_max = input[node,r*poolSize, c*poolSize]
+    temp_max = input[node, r*poolSize, c*poolSize]
 
     for filterRow in range(poolSize):
-        for filterCol in range(1,poolSize):
-            if(input[node,r*poolSize + filterRow, c*poolSize + filterCol] > max):
-                temp_max = input[node,r*poolSize + filterRow, c*poolSize + filterCol]
+        for filterCol in range(1, poolSize):
+            if(input[node, r*poolSize + filterRow, c*poolSize + filterCol] > max):
+                temp_max = input[node, r*poolSize +
+                                 filterRow, c*poolSize + filterCol]
     output[node, r, c] = temp_max
 
     return output
 
+
 @jit
-def maxpool_forward(input, poolSize,block_size = (32, 32)):
+def maxpool_forward(input, poolSize, block_size=(32, 32)):
     input_num = input.shape[0]
     input_h = input.shape[1]
     input_w = input.shape[2]
     output_num = input_num
-    output_h= input_h/poolSize
-    output_w= input_w/poolSize
+    output_h = input_h/poolSize
+    output_w = input_w/poolSize
     output = np.zeros(shape=(output_num, output_h, output_w))
-    grid_size = (math.ceil(output_h / block_size[0]),math.ceil(output_w / block_size[1]))
+    grid_size = (
+        math.ceil(output_h / block_size[0]), math.ceil(output_w / block_size[1]))
     maxpool_forward_kernel[grid_size, block_size](input, poolSize, output)
     return output
 
@@ -212,31 +208,36 @@ def maxpool_forward(input, poolSize,block_size = (32, 32)):
 @cuda.jit
 def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, maxpoolOutputs):
     """
-	Thực hiện lan truyền ngược qua softmax layer.
+        Thực hiện lan truyền ngược qua softmax layer.
 
-	Input:
-		@ "gradient_out" là gradient của hàm lỗi so với output của hàm "softmax_forward".
-		@ "learningRate" là tốc độ học.
-		@ "weights" là mảng các trọng số của những node trong softmax layer, các trọng số trong một node là mảng một chiều.
-		@ "biases" là mảng các bias của những node trong softmax layer.
-		@ "softmaxForwardFlattenedInputs" là mảng các ma trận input của hàm "softmax_forward" đã được duỗi thẳng thành mảng một chiều.
-		@ "softmaxForwardInputsShape" là một tuple chứa hình dạng của input của hàm "softmax_forward".
-		@ "maxpoolOutputs" là mảng các giá trị trước khi tính softmax trong hàm "softmax_forward".
+        Input:
+                @ "gradient_out" là gradient của hàm lỗi so với output của hàm "softmax_forward".
+                @ "learningRate" là tốc độ học.
+                @ "weights" là mảng các trọng số của những node trong softmax layer, các trọng số trong một node là mảng một chiều.
+                @ "biases" là mảng các bias của những node trong softmax layer.
+                @ "softmaxForwardFlattenedInputs" là mảng các ma trận input của hàm "softmax_forward" đã được duỗi thẳng thành mảng một chiều.
+                @ "softmaxForwardInputsShape" là một tuple chứa hình dạng của input của hàm "softmax_forward".
+                @ "maxpoolOutputs" là mảng các giá trị trước khi tính softmax trong hàm "softmax_forward".
 
-	Output:
-		@ "d_L_d_inputs" là gradient của hàm lỗi so với input của hàm "softmax_forward".
-	"""
-    maxpoolOutputsLength = maxpoolOutputs.shape[1] * maxpoolOutputs.shape[2] * maxpoolOutputs.shape[3]
-    gradient_err_weights = np.zeros(gradient_out.shape[1], maxpoolOutputsLength)
+        Output:
+                @ "d_L_d_inputs" là gradient của hàm lỗi so với input của hàm "softmax_forward".
+        """
+    maxpoolOutputsLength = maxpoolOutputs.shape[1] * \
+        maxpoolOutputs.shape[2] * maxpoolOutputs.shape[3]
+    gradient_err_weights = np.zeros(
+        gradient_out.shape[1], maxpoolOutputsLength)
     gradient_err_biases = np.zeros(gradient_out.shape[1])
-    gradient_err_inputs = np.zeros((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
+    gradient_err_inputs = np.zeros(
+        (maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
     for i in range(maxpoolOutputs.shape[0]):
         block_size = (32, 32)
         grid_size = (
             math.ceil(maxpoolOutputsLength / block_size[1]), math.ceil(gradient_out[i].shape[1] / block_size[0]))
-        gradient_err_weights_temp = np.zeros((gradient_out.shape[1], maxpoolOutputsLength))
+        gradient_err_weights_temp = np.zeros(
+            (gradient_out.shape[1], maxpoolOutputsLength))
         dot_kernel[grid_size, block_size](gradient_out[i].reshape(gradient_out.shape[1], 1),
-                                          maxpoolOutputs[i].reshape(1, maxpoolOutputsLength),
+                                          maxpoolOutputs[i].reshape(
+                                              1, maxpoolOutputsLength),
                                           gradient_err_weights_temp)
         grid_size_1 = (math.ceil(gradient_err_weights.shape[0] / block_size[0]),
                        math.ceil(gradient_err_weights.shape[1] / block_size[1]))
@@ -244,12 +245,15 @@ def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, max
                                                    maxpoolOutputs.shape[0],
                                                    gradient_err_weights)
         for j in range(gradient_out.shape[1]):
-            gradient_err_biases[j] = gradient_out[i, j] / maxpoolOutputs.shape[0]
+            gradient_err_biases[j] = gradient_out[i, j] / \
+                maxpoolOutputs.shape[0]
         grid_size_2 = (1, 1)
         dot_kernel[grid_size_2, block_size](gradient_out[i].reshape(1, gradient_out.shape[1]), weights,
                                             gradient_err_inputs[i])
-    update_weights_kernel(weights, gradient_err_weights, learning_rate=learningRate)
-    update_biases_kernel(biases, gradient_err_biases, learning_rate=learningRate)
+    update_weights_kernel(weights, gradient_err_weights,
+                          learning_rate=learningRate)
+    update_biases_kernel(biases, gradient_err_biases,
+                         learning_rate=learningRate)
     return gradient_err_inputs.reshape(maxpoolOutputs.shape)
 
 
@@ -266,12 +270,12 @@ def conv_backward_kernel(d_L_d_out, learningRate, convFilters, normalizedImages)
             for d_L_d_out_col in range(d_L_d_out.shape[3]):
                 d_L_d_filters[node, outputRow, outputCol] = d_L_d_filters[node, outputRow, outputCol] + d_L_d_out[
                     image, node, d_L_d_out_row, d_L_d_out_col] * normalizedImages[
-                                                                image, d_L_d_out_row + outputRow, d_L_d_out_col + outputCol]
-    d_L_d_filters[node, outputRow, outputCol] = d_L_d_filters[node, outputRow, outputCol] / normalizedImages.shape[0]
+                    image, d_L_d_out_row + outputRow, d_L_d_out_col + outputCol]
+    d_L_d_filters[node, outputRow, outputCol] = d_L_d_filters[node,
+                                                              outputRow, outputCol] / normalizedImages.shape[0]
     convFilters[node, outputRow, outputCol] = convFilters[node, outputRow, outputCol] - learningRate * d_L_d_filters[
         node, outputRow, outputCol]
 
-	
 
 def main():
     print('main function')
