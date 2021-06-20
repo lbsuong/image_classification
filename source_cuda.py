@@ -257,46 +257,56 @@ def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, max
 		@ "d_L_d_inputs" là gradient của hàm lỗi so với input của hàm "softmax_forward".
 	"""
     maxpoolOutputsLength = maxpoolOutputs.shape[1] * maxpoolOutputs.shape[2] * maxpoolOutputs.shape[3]
-    # gradient_err_weights = np.zeros(gradient_out.shape[1], maxpoolOutputsLength)
     gradient_err_biases = np.zeros(gradient_out.shape[1])
-    # gradient_err_inputs = np.zeros((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
-    cuda_gradient_err_inputs = cuda.device_array((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
-    cuda_gradient_err_weights = cuda.device_array((gradient_out.shape[1], maxpoolOutputsLength))
+    cuda_gradient_err_inputs = cuda.device_array((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength), dtype=float)
+
+    gradient_err_weights = np.zeros((gradient_out.shape[1], maxpoolOutputsLength))
+    cuda_gradient_err_weights = cuda.to_device(gradient_err_weights)
+
     cuda_gradient_err_biases = cuda.device_array(gradient_out.shape[1])
+
     cuda_weights = cuda.to_device(weights)
     cuda_biases = cuda.to_device(biases)
+    block_size = (32, 32)
     for i in range(maxpoolOutputs.shape[0]):
-	stream = cuda.stream()
-        block_size = (32, 32)
+        stream = cuda.stream()
         grid_size = (
             math.ceil(maxpoolOutputsLength / block_size[0]), math.ceil(gradient_out.shape[1] / block_size[1]))
-
-        cuda_gradient_out_ = cuda.to_device(gradient_out[i].reshape(gradient_out.shape[1], 1), stream=stream)
-        cuda_maxpoolOutputs = cuda.to_device(maxpoolOutputs[i].reshape(1, maxpoolOutputsLength), stream=stream)
-        cuda_gradient_err_weights_temp = cuda.device_array((gradient_out.shape[1], maxpoolOutputsLength), stream=stream)
-
+        cuda_gradient_out_ = cuda.to_device(np.array(gradient_out[i].reshape(gradient_out.shape[1], 1)), stream=stream)
+        cuda_maxpoolOutputs = cuda.to_device(np.array(maxpoolOutputs[i].reshape(1, maxpoolOutputsLength)))
+        cuda_gradient_err_weights_temp = cuda.device_array((gradient_out.shape[1], maxpoolOutputsLength))
         dot_kernel[grid_size, block_size](cuda_gradient_out_,
                                           cuda_maxpoolOutputs,
                                           cuda_gradient_err_weights_temp)
-	
-        # gradient_err_weights_temp = cuda_gradient_err_weights_temp.copy_to_host()
+        # a = dot(gradient_out[i].reshape(gradient_out.shape[1], 1), maxpoolOutputs[i].reshape(1, maxpoolOutputsLength))
+        # cuda.synchronize()
+        # b = cuda_gradient_err_weights_temp.copy_to_host()
+        # cuda_gradient_err_weights_temp = cuda.to_device(gradient_err_weights_temp)
         grid_size_1 = (math.ceil(cuda_gradient_err_weights.shape[1] / block_size[0]),
                        math.ceil(cuda_gradient_err_weights.shape[0] / block_size[1]))
-
-        divide_max_kernel[grid_size_1, block_size](cuda_gradient_err_weights_temp,
-                                                   maxpoolOutputs.shape[0],
-                                                   cuda_gradient_err_weights)
-        gradient_err_weights_1 = cuda_gradient_err_weights.copy_to_host()
+        divide_max_kernel[grid_size_1, block_size](cuda_gradient_err_weights_temp, maxpoolOutputs.shape[0], cuda_gradient_err_weights)
+        # gradient_err_weights_1 = cuda_gradient_err_weights.copy_to_host()
         for j in range(gradient_out.shape[1]):
             gradient_err_biases[j] = gradient_out[i, j] / maxpoolOutputs.shape[0]
-        grid_size_2 = (1, 1)
-        dot_kernel[grid_size_2, block_size](cuda_gradient_out_, cuda_weights,
+
+        cuda_gradient_out_1 = cuda.to_device(gradient_out[i].reshape(1, gradient_out.shape[1]))
+        grid_size_2 = (math.ceil(cuda_weights.shape[1] / block_size[0]), math.ceil(cuda_gradient_out_1.shape[0] / block_size[1]))
+        dot_kernel[grid_size_2, block_size](cuda_gradient_out_1, cuda_weights,
                                             cuda_gradient_err_inputs[i])
+        # b = dot(gradient_out[i].reshape(1, gradient_out.shape[1]), weights)
+        # p = gradient_out[i].reshape(1, gradient_out.shape[1]) @ weights
+        # g = cuda_gradient_err_inputs[i].copy_to_host()
+        # print(np.mean(np.abs(g-b)))
+        # print("sdsdsd: ", np.mean(np.abs(p-b)))
+
     gradient_err_inputs = cuda_gradient_err_inputs.copy_to_host()
+
     grid_size_update_weights = (math.ceil(cuda_weights.shape[1] / block_size[0]), math.ceil(cuda_weights.shape[0] / block_size[1]))
     grid_size_update_biases = math.ceil(cuda_biases.shape[0] / block_size[0])
+
     update_weights_kernel[grid_size_update_weights, block_size](cuda_weights, cuda_gradient_err_weights, learningRate)
     update_biases_kernel[grid_size_update_biases, block_size[0]](cuda_biases, cuda_gradient_err_biases, learningRate)
+
     weights = cuda_weights.copy_to_host()
     biases = cuda_biases.copy_to_host()
     return gradient_err_inputs.reshape(maxpoolOutputs.shape)
