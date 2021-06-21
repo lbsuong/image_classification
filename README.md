@@ -27,3 +27,12 @@ Huấn luyện Convolutional Neural Network để phân lớp ảnh bằng Stoch
 | Phạm Như Quyền | Hoàn thành cài đặt tuần tự (không dùng numpy) | 04/05/2021 | ... |
 | Lương Bội Sương | Hoàn thành cài đặt tuần tự (không dùng numpy) | 04/05/2021 | ... |
 | Cả nhóm | Merge source code tuần tự (không dùng numpy) | 05/05/2021 | ... |
+| Võ Thế Sơn | Hoàn thành hàm nhân ma trận song song | 17/06/2021 | 13/06/2021 |
+| Võ Thế Sơn | Hoàn thành hàm chuẩn hoá song song | 17/06/2021 | 13/06/2021 |
+| Trần Đình Sang | Hoàn thành hàm convolutional forward song song | 24/06/2021 | 20/06/2021 |
+| Võ Thế Sơn | Hoàn thành hàm maxpool forward song song | 24/06/2021 | 20/06/2021 |
+| Trần Đình Sang | Hoàn thành hàm softmax forward song song | 24/06/2021 | 20/06/2021 |
+| Phạm Như Quyền | Hoàn thành hàm softmax backprop song song | 24/06/2021 | 20/06/2021 |
+| Phạm Như Quyền | Hoàn thành hàm convolutional backprop song song | 24/06/2021 | 20/06/2021 |
+| Lương Bội Sương | Hoàn thành hàm maxpool backprop song song | 24/06/2021 | ... |
+| Cả nhóm | Xem xét nên tối ưu hàm nào | 24/06/2021 | ... |
