@@ -124,34 +124,61 @@ def conv_forward(convInput, filters, block_size=(32, 32)):
     return convOutput
 
 
+# @cuda.jit
+# def maxpool_forward_kernel(input, output, poolSize):
+#     c, r = cuda.grid(2)
+#     for node in range(input.shape[0]):
+#         if r < output.shape[1] and c < output.shape[2]:
+#             temp_max = input[node, r*poolSize, c*poolSize]
+
+#             for filterRow in range(poolSize):
+#                 for filterCol in range(1, poolSize):
+#                     if(input[node, r*poolSize + filterRow, c*poolSize + filterCol] > temp_max):
+#                         temp_max = input[node, r*poolSize +
+#                                          filterRow, c*poolSize + filterCol]
+#             output[node, r, c] = temp_max
+
+
+# def maxpool_forward(input, poolSize, block_size=(32, 32)):
+#     input_num = input.shape[0]
+#     input_h = input.shape[1]
+#     input_w = input.shape[2]
+#     output_num = input_num
+#     output_h = input_h//poolSize
+#     output_w = input_w//poolSize
+#     output = np.empty((output_num, output_h, output_w), dtype=float)
+#     grid_size = (
+#         math.ceil(output_h / block_size[0]), math.ceil(output_w / block_size[1]))
+#     maxpool_forward_kernel[grid_size, block_size](input, poolSize, output)
+#     return output
+
 @cuda.jit
-def maxpool_forward_kernel(input, output, poolSize):
+def maxpool_forward_kernel(input, poolSize, output, maxPosition):
     c, r = cuda.grid(2)
-    for node in range(input.shape[0]):
-        if r < output.shape[1] and c < output.shape[2]:
-            temp_max = input[node, r*poolSize, c*poolSize]
-
+    if r >= output.shape[2] or c >= output.shape[3]:
+        return
+    for image in range(output.shape[0]):
+        for node in range(output.shape[1]):
+            startRow = r * poolSize
+            startCol = c * poolSize
+            maxRow = startRow
+            maxCol = startCol
+            maxValue = input[image, node, maxRow, maxCol]
             for filterRow in range(poolSize):
-                for filterCol in range(1, poolSize):
-                    if(input[node, r*poolSize + filterRow, c*poolSize + filterCol] > temp_max):
-                        temp_max = input[node, r*poolSize +
-                                         filterRow, c*poolSize + filterCol]
-            output[node, r, c] = temp_max
+                for filterCol in range(poolSize):
+                    tempRow = startRow + filterRow
+                    tempCol = startCol + filterCol
+                    if input[image, node, tempRow, tempCol] > maxValue:
+                        maxValue = input[image, node, tempRow, tempCol]
+                        maxRow = tempRow
+                        maxCol = tempCol
+            output[image, node, r, c] = maxValue
+            maxPosition[image, node, r, c] = (maxRow, maxCol)
 
-
-def maxpool_forward(input, poolSize, block_size=(32, 32)):
-    input_num = input.shape[0]
-    input_h = input.shape[1]
-    input_w = input.shape[2]
-    output_num = input_num
-    output_h = input_h//poolSize
-    output_w = input_w//poolSize
-    output = np.empty((output_num, output_h, output_w), dtype=float)
-    grid_size = (
-        math.ceil(output_h / block_size[0]), math.ceil(output_w / block_size[1]))
-    maxpool_forward_kernel[grid_size, block_size](input, poolSize, output)
-    return output
-
+def maxpool_forward_kernel_wrapper(d_input, poolSize, d_output, d_maxPosition, stream, blockSize=(32, 32)):
+    gridSize = (math.ceil(d_output.shape[3] / blockSize[0]),
+                math.ceil(d_output.shape[2] / blockSize[1]))
+    maxpool_forward_kernel[gridSize, blockSize, stream](d_input, poolSize, d_output, d_maxPosition)
 
 @cuda.jit
 def divide_max_kernel(X, _max, X_return):
