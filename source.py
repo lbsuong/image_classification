@@ -7,12 +7,13 @@ from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.datasets import mnist
-from numba import jit, prange
+from numba import jit, prange, config
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+config.THREADING_LAYER = 'omp'
 
 
-@jit(parallel=True)
+@jit
 def dot(A, B):
     '''
     Nhân ma trận A và B, số cột của A phải bằng số dòng của B
@@ -28,8 +29,8 @@ def dot(A, B):
         raise Exception('Số dòng của A không bằng số cột của B')
 
     output = np.zeros((A.shape[0], B.shape[1]))
-    for row in prange(A.shape[0]):
-        for col in prange(B.shape[1]):
+    for row in range(A.shape[0]):
+        for col in range(B.shape[1]):
             for i in range(A.shape[1]):
                 output[row, col] += A[row, i] * B[i, col]
     return output
@@ -69,7 +70,7 @@ def normalize(X):
     return X.astype(np.float32)
 
 
-@jit(parallel=True)
+@jit
 def conv_forward(input, filters):
     '''
     Thực hiện lan truyền xuôi qua conv layer.
@@ -84,9 +85,9 @@ Output:
     outputHeight = input.shape[0] - filters.shape[1] + 1
     outputWidth = input.shape[1] - filters.shape[2] + 1
     output = np.zeros((filters.shape[0], outputHeight, outputWidth))
-    for node in prange(filters.shape[0]):
-        for outputRow in prange(outputHeight):
-            for outputCol in prange(outputWidth):
+    for node in range(filters.shape[0]):
+        for outputRow in range(outputHeight):
+            for outputCol in range(outputWidth):
                 for filterRow in range(filters.shape[1]):
                     for filterCol in range(filters.shape[2]):
                         output[node, outputRow, outputCol] += input[filterRow + outputRow,
@@ -116,7 +117,7 @@ def matrix_max(X):
     return max, (maxRow, maxCol)
 
 
-@jit(parallel=True)
+@jit
 def maxpool_forward(input, poolSize):
     '''
     Thực hiện lan truyền xuôi qua maxpool layer.
@@ -133,9 +134,9 @@ def maxpool_forward(input, poolSize):
     output = np.zeros(outputShape)
     maxPositions = np.zeros(
         (outputShape[0], outputShape[1], outputShape[2], 2))
-    for node in prange(input.shape[0]):
-        for row in prange(outputShape[1]):
-            for col in prange(outputShape[2]):
+    for node in range(input.shape[0]):
+        for row in range(outputShape[1]):
+            for col in range(outputShape[2]):
                 output[node, row, col], maxPositions[node, row, col] = matrix_max(
                     input[node, (row * poolSize):(poolSize * (row + 1)), (col * poolSize):(poolSize * (col + 1))])
     return output, maxPositions
@@ -232,7 +233,7 @@ def compute_gradient(d_L_d_out, postSoftmax):
         return d_L_d_preSoftmax
 
 
-@jit(parallel=True)
+@jit
 def softmax_backprop(d_L_d_preSoftmax, learningRate, weights, biases, maxpoolOutputs):
     '''
           Thực hiện lan truyền ngược qua softmax layer.
@@ -255,12 +256,12 @@ def softmax_backprop(d_L_d_preSoftmax, learningRate, weights, biases, maxpoolOut
     d_L_d_b = np.zeros(d_L_d_preSoftmax.shape[1])
     d_L_d_inputs = np.zeros((maxpoolOutputs.shape[0], 1, maxpoolOutputsLength))
 
-    for i in prange(maxpoolOutputs.shape[0]):
+    for i in range(maxpoolOutputs.shape[0]):
         # Gradient của hàm lỗi so với biến weights
         d_L_d_w_temp = dot(d_L_d_preSoftmax[i].reshape(
             d_L_d_preSoftmax.shape[1], 1), maxpoolOutputs[i].reshape(1, maxpoolOutputsLength))
-        for row in prange(d_L_d_w.shape[0]):
-            for col in prange(d_L_d_w.shape[1]):
+        for row in range(d_L_d_w.shape[0]):
+            for col in range(d_L_d_w.shape[1]):
                 d_L_d_w[row, col] += d_L_d_w_temp[row, col] / \
                     maxpoolOutputs.shape[0]
 
@@ -273,8 +274,8 @@ def softmax_backprop(d_L_d_preSoftmax, learningRate, weights, biases, maxpoolOut
             1, d_L_d_preSoftmax.shape[1]), weights)
 
         # Cập nhật weights
-    for row in prange(weights.shape[0]):
-        for col in prange(weights.shape[1]):
+    for row in range(weights.shape[0]):
+        for col in range(weights.shape[1]):
             weights[row, col] -= learningRate * d_L_d_w[row, col]
 
             # Cập nhật biases
@@ -284,7 +285,7 @@ def softmax_backprop(d_L_d_preSoftmax, learningRate, weights, biases, maxpoolOut
     return d_L_d_inputs.reshape(maxpoolOutputs.shape)
 
 
-@jit(parallel=True)
+@jit
 def maxpool_backprop(d_L_d_out, maxPositions, maxpoolSize, convOutputsShape):
     '''
     Thực hiện lan truyền ngược qua maxpool layer. 
@@ -298,16 +299,16 @@ def maxpool_backprop(d_L_d_out, maxPositions, maxpoolSize, convOutputsShape):
     '''
     d_L_d_inputs = np.zeros(
         (d_L_d_out.shape[0], convOutputsShape[0], convOutputsShape[1], convOutputsShape[2]))
-    for image in prange(d_L_d_out.shape[0]):
-        for node in prange(d_L_d_out.shape[1]):
-            for row in prange(d_L_d_out.shape[2]):
-                for col in prange(d_L_d_out.shape[3]):
+    for image in range(d_L_d_out.shape[0]):
+        for node in range(d_L_d_out.shape[1]):
+            for row in range(d_L_d_out.shape[2]):
+                for col in range(d_L_d_out.shape[3]):
                     d_L_d_inputs[image, node, maxPositions[image, node, row, col, 0] + row * maxpoolSize,
                                  maxPositions[image, node, row, col, 1] + col * maxpoolSize] = d_L_d_out[image, node, row, col]
     return d_L_d_inputs
 
 
-@jit(parallel=True)
+@jit
 def conv_backprop(d_L_d_out, learningRate, convFilters, normalizedImages):
     '''
     Thực hiện lan truyền ngược qua maxpool layer.
@@ -321,21 +322,21 @@ def conv_backprop(d_L_d_out, learningRate, convFilters, normalizedImages):
     Output: None
     '''
     d_L_d_filters = np.zeros(convFilters.shape)
-    for image in prange(normalizedImages.shape[0]):
-        for node in prange(convFilters.shape[0]):
+    for image in range(normalizedImages.shape[0]):
+        for node in range(convFilters.shape[0]):
             for filter_row in range(convFilters.shape[1]):
                 for filter_col in range(convFilters.shape[2]):
-                    for d_L_d_out_row in prange(d_L_d_out.shape[2]):
-                        for d_L_d_out_col in prange(d_L_d_out.shape[3]):
+                    for d_L_d_out_row in range(d_L_d_out.shape[2]):
+                        for d_L_d_out_col in range(d_L_d_out.shape[3]):
                             d_L_d_filters[node, filter_row, filter_col] += d_L_d_out[image, node, d_L_d_out_row,
                                                                                      d_L_d_out_col] * normalizedImages[image, d_L_d_out_row + filter_row, d_L_d_out_col + filter_col]
-    for node in prange(d_L_d_filters.shape[0]):
-        for row in prange(d_L_d_filters.shape[1]):
-            for col in prange(d_L_d_filters.shape[2]):
+    for node in range(d_L_d_filters.shape[0]):
+        for row in range(d_L_d_filters.shape[1]):
+            for col in range(d_L_d_filters.shape[2]):
                 d_L_d_filters[node, row, col] /= normalizedImages.shape[0]
-    for node in prange(convFilters.shape[0]):
-        for row in prange(convFilters.shape[1]):
-            for col in prange(convFilters.shape[2]):
+    for node in range(convFilters.shape[0]):
+        for row in range(convFilters.shape[1]):
+            for col in range(convFilters.shape[2]):
                 convFilters[node, row, col] -= learningRate * \
                     d_L_d_filters[node, row, col]
 
@@ -349,32 +350,6 @@ def max_value_index(X):
             max = X[i]
             index = i
     return index
-
-
-@jit(parallel=True)
-def test(imageBatch, labelBatch, convFilters, maxpoolSize, maxpoolOutputs, maxPositions, softmaxWeights, softmaxBiases, convOutputsShape, loss, accuracy, d_L_d_preSoftmax):
-    for i in prange(imageBatch.shape[0]):
-        # Lan truyền xuôi.
-        convOutputs = conv_forward(imageBatch[i], convFilters)
-        maxpoolOutputs[i], maxPositions[i] = maxpool_forward(
-            convOutputs, maxpoolSize)
-        postSoftmax = softmax_forward(
-            maxpoolOutputs[i], softmaxWeights, softmaxBiases)
-
-        convOutputsShape[0] = convOutputs.shape[0]
-        convOutputsShape[1] = convOutputs.shape[1]
-        convOutputsShape[2] = convOutputs.shape[2]
-
-        # Tính tổng cost-entropy loss và đếm số lượng các dự đoán đúng.
-        loss += cost_entropy_loss(postSoftmax[labelBatch[i]])
-        predictedLabel = max_value_index(postSoftmax)
-        if predictedLabel == labelBatch[i]:
-            accuracy += 1
-
-        # Tính gradient
-        d_L_d_out = np.zeros(softmaxWeights.shape[0])
-        d_L_d_out[labelBatch[i]] = -1 / postSoftmax[labelBatch[i]]
-        d_L_d_preSoftmax[i] = compute_gradient(d_L_d_out, postSoftmax)
 
 
 @jit(parallel=True)
@@ -455,7 +430,7 @@ def main():
     numClass = 10
     learningRate = 0.005
     batchSize = 100
-    epoch = 20
+    epoch = 10
 
     # Load dữ liệu, chia tập train test
     print("Loading data...")
