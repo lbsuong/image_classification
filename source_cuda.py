@@ -176,8 +176,8 @@ def softmax_backprop_kernel_wrapper(d_L_d_out,
             continue
 
         # Gradient của output so với biến preSoftmax
-        d_out_d_preSoftmax = np.array([-x * postSoftmax[i] for x in postSoftmax],
-                                      dtype=float)
+        d_out_d_preSoftmax = np.array(
+            [-x * postSoftmax[i] for x in postSoftmax], dtype=float)
         d_out_d_preSoftmax[i] = postSoftmax[i] * (1 - postSoftmax[i])
 
         # Gradient của hàm lỗi so với biến preSoftmax
@@ -269,17 +269,16 @@ def average_sum_gradient(softmaxWeightGradient, newSoftmaxWeightGradient,
                          convFilterGradient, newConvFilterGradient, numImage):
     for r in range(softmaxWeightGradient.shape[0]):
         for c in range(softmaxWeightGradient.shape[1]):
-            softmaxWeightGradient[r,
-                                  c] += (newSoftmaxWeightGradient[r,
-                                                                 c] / numImage)
+            softmaxWeightGradient[r, c] += (newSoftmaxWeightGradient[r, c] /
+                                            numImage)
     for i in range(len(softmaxBiasGradient)):
         softmaxBiasGradient[i] += (newSoftmaxBiasGradient[i] / numImage)
     for node in range(convFilterGradient.shape[0]):
         for r in range(convFilterGradient.shape[1]):
             for c in range(convFilterGradient.shape[2]):
                 convFilterGradient[node, r,
-                                   c] += (newConvFilterGradient[node, r,
-                                                               c] / numImage)
+                                   c] += (newConvFilterGradient[node, r, c] /
+                                          numImage)
 
 
 @jit
@@ -306,7 +305,7 @@ def train(d_trainImages, trainLabels, learningRate, batchSize, convFilters,
     loss = 0
     accuracy = 0
 
-    for batch in range(0, 1, batchSize):
+    for batch in range(0, d_trainImages.shape[0], batchSize):
         # Tạo mini-batch
         d_imageBatch = d_trainImages[batch:batch + batchSize]
         labelBatch = trainLabels[batch:batch + batchSize]
@@ -356,10 +355,41 @@ def train(d_trainImages, trainLabels, learningRate, batchSize, convFilters,
                                  newSoftmaxBiasGradient, convFilterGradient,
                                  newConvFilterGradient, d_imageBatch.shape[0])
 
-        update_softmax_layer(softmaxWeight, softmaxBias, learningRate, softmaxWeightGradient, softmaxBiasGradient)
+        update_softmax_layer(softmaxWeight, softmaxBias, learningRate,
+                             softmaxWeightGradient, softmaxBiasGradient)
         update_conv_layer(convFilters, learningRate, convFilterGradient)
 
     return loss / d_trainImages.shape[0], (accuracy / d_trainImages.shape[0])
+
+
+def validate(d_validateImages, validateLabels, convFilters, maxpoolSize,
+             softmaxWeight, softmaxBias):
+    loss = 0
+    accuracy = 0
+
+    d_convFilters = cuda.to_device(convFilters)
+    d_softmaxWeightTranspose = cuda.to_device(softmaxWeight.transpose())
+    for i in range(d_validateImages.shape[0]):
+        # Lan truyền xuôi
+        d_convOutput = conv_forward_kernel_wrapper(d_validateImages[i],
+                                                   d_convFilters)
+        cuda.synchronize()
+        d_maxpoolOutput, _ = maxpool_forward_kernel_wrapper(
+            d_convOutput, maxpoolSize)
+        cuda.synchronize()
+        postSoftmax = softmax_forward_kernel_wrapper(d_maxpoolOutput,
+                                                     d_softmaxWeightTranspose,
+                                                     softmaxBias)
+        cuda.synchronize()
+
+        # Tính tổng cost-entropy loss và đếm số lượng các dự đoán đúng
+        loss += cost_entropy_loss(postSoftmax[validateLabels[i]])
+        predictedLabel = max_value_index(postSoftmax)
+        if predictedLabel == validateLabels[i]:
+            accuracy += 1
+
+    return loss / d_validateImages.shape[0], (accuracy /
+                                              d_validateImages.shape[0])
 
 
 @jit
@@ -387,8 +417,8 @@ def main():
     maxpoolSize = 2
     numClass = 10
     learningRate = 0.005
-    batchSize = 3
-    epoch = 1
+    batchSize = 100
+    epoch = 10
 
     print("Loading data...")
     (trainImages, trainLabels), (validateImages,
@@ -400,13 +430,8 @@ def main():
     trainLabels = trainLabels[trainingShuffler]
 
     print("Normalizing and copying data to GPU...")
-    # d_trainImages = normalize_wrapper(trainImages)
-    # d_validateImages = normalize_wrapper(validateImages)
-    # d_validateLabels = cuda.to_device(validateLabels)
-    normalizedTrainImage = np.zeros(trainImages.shape)
-    for i in range(len(trainLabels)):
-        normalizedTrainImage[i] = normalize(trainImages[i])
-    d_trainImages = cuda.to_device(normalizedTrainImage)
+    d_trainImages = normalize_wrapper(trainImages)
+    d_validateImages = normalize_wrapper(validateImages)
 
     print("Initiating parameters...")
     convFilters = gen_conv_filters(numConvFilter, convFiltersSize)
@@ -426,17 +451,22 @@ def main():
             print("Epoch {e}/{epoch}".format(e=e + 1, epoch=epoch))
             print('\t', end='')
         epochStart = time.time()
-        trainLoss, trainAccuracy = train(d_trainImages, trainLabels, learningRate,
-                                     batchSize, convFilters, maxpoolSize,
-                                     softmaxWeights, softmaxBiases)
+        trainLoss, trainAccuracy = train(d_trainImages, trainLabels,
+                                         learningRate, batchSize, convFilters,
+                                         maxpoolSize, softmaxWeights,
+                                         softmaxBiases)
+        validateLoss, validateAccuracy = validate(d_validateImages,
+                                                  validateLabels, convFilters,
+                                                  maxpoolSize, softmaxWeights,
+                                                  softmaxBiases)
         epochEnd = time.time()
         print(
             "{second}s - loss: {trainingLoss:.4f} - accuracy: {trainingAccuracy:.4f} - val_loss: {validationLoss:.4f} - val_accuracy: {validationAccuracy:.4f}"
             .format(second=int(epochEnd - epochStart),
                     trainingLoss=trainLoss,
                     trainingAccuracy=trainAccuracy,
-                    validationLoss=0,
-                    validationAccuracy=0))
+                    validationLoss=validateLoss,
+                    validationAccuracy=validateAccuracy))
     stop = time.time()
     print("Total runtime:", time.strftime("%H:%M:%S",
                                           time.gmtime(stop - start)))

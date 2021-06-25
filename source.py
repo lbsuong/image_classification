@@ -442,8 +442,8 @@ def validate(validateImages, validateLabels, convFilters, maxpoolSize,
 
 def main():
     # Khởi tạo các tham số
-    convFiltersSize = 11
-    numConvFilter = 512
+    convFiltersSize = 5
+    numConvFilter = 32
     maxpoolSize = 2
     numClass = 10
     learningRate = 0.005
