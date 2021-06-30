@@ -282,18 +282,24 @@ def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedO
 
     return d_L_d_inputs.reshape(maxpoolOutputsShape)
 
-def maxpool_backprop(d_L_d_out, maxpoolForwardInputs):
-	'''
-	Thực hiện lan truyền ngược qua maxpool layer.
 
-	Input:
-		@ "d_L_d_out" là gradient của hàm lỗi so với output của hàm "maxpool_forward".
-		@ "maxpoolForwardInputs" là mảng các input của hàm "maxpool_forward".
-
-	Output:
-		@ "d_L_d_input" là gradient của hàm lỗi so với input của hàm "maxpool_forward".
-	'''
-	pass
+@jit
+def maxpool_backprop(d_L_d_out, convForwardOutputs, maxpoolSize):
+  '''
+  Thực hiện lan truyền ngược qua maxpool layer. 
+  Input:
+  	@ "d_L_d_out" là gradient của hàm lỗi so với output của hàm "maxpool_forward".
+  	@ "convForwardOutputs" là mảng các input của hàm "maxpool_forward". 
+  Output:
+  	@ "d_L_d_input" là gradient của hàm lỗi so với input của hàm "maxpool_forward".
+  '''
+  d_L_d_inputs = np.zeros(convForwardOutputs.shape)
+  for node in range(d_L_d_out.shape[0]):
+    for row in range(d_L_d_out.shape[1]):
+      for col in range(d_L_d_out.shape[2]):
+        _, (convForwardOutputs_maxRow, convForwardOutputs_maxCol) = matrix_max(convForwardOutputs[node, row * maxpoolSize : maxpoolSize * (row + 1), col * maxpoolSize : maxpoolSize * (col + 1)])
+        d_L_d_inputs[node, convForwardOutputs_maxRow + row * maxpoolSize, convForwardOutputs_maxCol + col * maxpoolSize] = d_L_d_out[node, row, col]
+  return d_L_d_inputs
 
 @jit
 def conv_backprop(d_L_d_out, learningRate, convFilters, normalizedImage):
