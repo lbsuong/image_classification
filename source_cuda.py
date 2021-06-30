@@ -22,7 +22,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 @cuda.jit
 def dot_kernel(A, B, C):
-    '''
+    """
     Nhân ma trận A và B, số cột của A phải bằng số dòng của B
 
     Input:
@@ -31,7 +31,7 @@ def dot_kernel(A, B, C):
     Output:
 
         @ Ma trận của tích hai ma trận A và B.
-    '''
+    """
     y = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
     x = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
     if y > C.shape[0] or x > C.shape[1]:
@@ -43,7 +43,7 @@ def dot_kernel(A, B, C):
 
 @cuda.jit
 def normalize_kernel(X):
-    '''
+    """
     Chuẩn hoá các phần tử trong mảng một chiều X về dạng [0,1] bằng cách chia cho "max".
 
     Input:
@@ -52,7 +52,7 @@ def normalize_kernel(X):
 
     Output:
         @ Mảng các giá trị đã được normalize.
-    '''
+    """
     row = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
     col = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
     if row > X.shape[0] or col > X.shape[1]:
@@ -76,7 +76,7 @@ def divide_max_kernel(X, _max, X_return):
     col = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
     if row > X.shape[0] or col > X.shape[1]:
         return
-    X_return[row, col] = (X[row, col] / _max)
+    X_return[row, col] = X_return[row, col] + (X[row, col] / _max)
 
 
 # có thể sử dụng SMEM để tối ưu trên version 2
@@ -213,11 +213,10 @@ def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, max
     cuda_gradient_err_biases = cuda.device_array(gradient_out.shape[1])
     cuda_weights = cuda.to_device(weights)
     cuda_biases = cuda.to_device(biases)
+    block_size = (32, 32)
     for i in range(maxpoolOutputs.shape[0]):
-        block_size = (32, 32)
         grid_size = (
-            math.ceil(maxpoolOutputsLength / block_size[1]), math.ceil(gradient_out[i].shape[1] / block_size[0]))
-
+            math.ceil(maxpoolOutputsLength / block_size[0]), math.ceil(gradient_out.shape[1] / block_size[1]))
         cuda_gradient_out_ = cuda.to_device(gradient_out[i].reshape(gradient_out.shape[1], 1))
         cuda_maxpoolOutputs = cuda.to_device(maxpoolOutputs[i].reshape(1, maxpoolOutputsLength))
         cuda_gradient_err_weights_temp = cuda.device_array((gradient_out.shape[1], maxpoolOutputsLength))
@@ -225,9 +224,6 @@ def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, max
         dot_kernel[grid_size, block_size](cuda_gradient_out_,
                                           cuda_maxpoolOutputs,
                                           cuda_gradient_err_weights_temp)
-
-        cuda.synchronize()
-        # gradient_err_weights_temp = cuda_gradient_err_weights_temp.copy_to_host()
         grid_size_1 = (math.ceil(cuda_gradient_err_weights.shape[0] / block_size[0]),
                        math.ceil(cuda_gradient_err_weights.shape[1] / block_size[1]))
 
@@ -248,7 +244,7 @@ def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, max
     return gradient_err_inputs.reshape(maxpoolOutputs.shape)
 
 
-def maxpool_backward_kernel(d_L_d_inputs,d_L_d_out, maxPositions, maxpoolSize, convOutputsShape):
+def maxpool_backward_kernel(d_L_d_inputs, d_L_d_out, maxPositions, maxpoolSize, convOutputsShape):
     pass
 
 
