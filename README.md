@@ -34,5 +34,8 @@ Huấn luyện Convolutional Neural Network để phân lớp ảnh bằng Stoch
 | Trần Đình Sang | Hoàn thành hàm softmax forward song song | 24/06/2021 | 20/06/2021 |
 | Phạm Như Quyền | Hoàn thành hàm softmax backprop song song | 24/06/2021 | 20/06/2021 |
 | Phạm Như Quyền | Hoàn thành hàm convolutional backprop song song | 24/06/2021 | 20/06/2021 |
-| Lương Bội Sương | Hoàn thành hàm maxpool backprop song song | 24/06/2021 | ... |
-| Cả nhóm | Xem xét nên tối ưu hàm nào | 24/06/2021 | ... |
+| Lương Bội Sương | Hoàn thành hàm maxpool backprop song song | 24/06/2021 | 20/06/2021 |
+| Cả nhóm | Xem xét nên tối ưu hàm nào | 24/06/2021 | 21/06/2021 |
+| Cả nhóm | Tối ưu hoá lần 1 | 01/07/2021 | 30/06/2021 |
+| Cả nhóm | Tối ưu hoá lần 2 | 04/07/2021 | ... |
+| Cả nhóm | Tối ưu hoá lần 3 | 08/07/2021 | ... |
