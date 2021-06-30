@@ -205,50 +205,19 @@ def max(X):
 
 @jit
 def cost_entropy_loss(x):
-	'''
-	Hàm tính đỘ lỗi.
-	
-	Input:
-		@ "x" là giá trị lớn nhất của mảng trả về từ hàm "softmax_forward".
-
-	Output:
-		@ Độ lỗi cost-entropy loss.
-	'''
-	pass
+  '''
+  Hàm tính đỘ lỗi.
+  Input:
+  	@ "x" là giá trị lớn nhất của mảng trả về từ hàm "softmax_forward". 
+  Output:
+  	@ Độ lỗi cost-entropy loss.
+  '''
+  return -math.log(x)
 
 @jit
-def normalize(X, max):
-	'''
-	Chuẩn hoá các phần tử trong mảng một chiều X về dạng [0,1] bằng cách chia cho "max".
-
-	Input:
-		@ "X" là mảng một chiều có "n" phần tử.
-		@ "max" là giá trị tối đa.
-
-	Output:
-		@ Mảng các giá trị đã được normalize.
-	'''
-	pass
-
-@jit
-def reshape(X, shape):
-	'''
-	Chuyển mảng một chiều "X" sang mảng "shape" chiều.
-
-	Input:
-		@ "X" là mảng một chiều.
-		@ "shape" là một tuple chứa hình dạng của mảng sau khi reshape.
-
-	Output:
-		@ Mảng có hình dạng là "shape".
-	'''
-	pass
-
-@jit
-def softmax_backprop(d_L_d_out, learningRate, weights, biases, softmaxForwardFlattenedInputs, softmaxForwardInputsShape, preSoftmax):
-	'''
+def softmax_backprop(d_L_d_out, learningRate, weights, biases, maxpoolFlattenedOutputs, maxpoolOutputsShape, preSoftmax):
+  '''
 	Thực hiện lan truyền ngược qua softmax layer.
-
 	Input:
 		@ "d_L_d_out" là gradient của hàm lỗi so với output của hàm "softmax_forward".
 		@ "learningRate" là tốc độ học.
@@ -257,13 +226,62 @@ def softmax_backprop(d_L_d_out, learningRate, weights, biases, softmaxForwardFla
 		@ "softmaxForwardFlattenedInputs" là mảng các ma trận input của hàm "softmax_forward" đã được duỗi thẳng thành mảng một chiều.
 		@ "softmaxForwardInputsShape" là một tuple chứa hình dạng của input của hàm "softmax_forward".
 		@ "preSoftmax" là mảng các giá trị trước khi tính softmax trong hàm "softmax_forward".
-
 	Output:
 		@ "d_L_d_inputs" là gradient của hàm lỗi so với input của hàm "softmax_forward".
 	'''
-	pass
+  for i, gradient in enumerate(d_L_d_out):
+    if gradient == 0:
+      continue
 
-@jit
+    # e^(mỗi phần tử trong preSoftmax)
+    e_preSoftmax = np.zeros(len(preSoftmax))
+
+    for j in range(len(preSoftmax)):
+      e_preSoftmax[j] = math.exp(preSoftmax[j])
+
+    # Tổng của tất cả phần tử trong e_preSoftmax
+    S = 0
+    for j in e_preSoftmax:
+      S += j
+
+    # Gradient của hàm lỗi so với biến preSoftmax
+    d_out_d_preSoftmax = np.zeros(len(e_preSoftmax))
+    for k in range(len(e_preSoftmax)):
+        d_out_d_preSoftmax[k] = (-e_preSoftmax[i] * e_preSoftmax[k]) / (S ** 2)
+    d_out_d_preSoftmax[i] = e_preSoftmax[i] * (S - e_preSoftmax[i]) / (S ** 2)
+
+    # Gradient của preSoftmax so với biến weights/biases/inputs
+    d_preSoftmax_d_w = maxpoolFlattenedOutputs
+    d_preSoftmax_d_b = 1
+    d_preSoftmax_d_inputs = weights
+
+		# Gradient của hàm lỗi so với biến preSoftmax
+    d_L_d_preSoftmax = np.zeros(len(d_out_d_preSoftmax))
+    for j in range(len(d_out_d_preSoftmax)):
+      d_L_d_preSoftmax[j] = gradient * d_out_d_preSoftmax[j]
+
+		# Gradient của hàm lỗi so với biến weights
+    d_L_d_w = dot(d_L_d_preSoftmax.reshape(len(d_L_d_preSoftmax), 1), d_preSoftmax_d_w.reshape(1, len(d_preSoftmax_d_w)))
+
+		# Gradient của hàm lỗi so với biến biases
+    d_L_d_b = np.zeros(len(d_L_d_preSoftmax))
+    for j in range(len(d_L_d_preSoftmax)):
+      d_L_d_b[j] = d_L_d_preSoftmax[j] * d_preSoftmax_d_b
+
+		# Gradient của hàm lỗi so với biến inputs
+    d_L_d_inputs = dot(d_L_d_preSoftmax.reshape(1, len(d_L_d_preSoftmax)), d_preSoftmax_d_inputs)
+
+		# Cập nhật weights
+    for row in range(weights.shape[0]):
+      for col in range(weights.shape[1]):
+        weights[row, col] -= learningRate * d_L_d_w[row, col]
+        
+		# Cập nhật biases
+    for j in range(len(d_L_d_b)):
+      biases[j] -= learningRate * d_L_d_b[j]
+
+    return d_L_d_inputs.reshape(maxpoolOutputsShape)
+
 def maxpool_backprop(d_L_d_out, maxpoolForwardInputs):
 	'''
 	Thực hiện lan truyền ngược qua maxpool layer.
