@@ -8,13 +8,13 @@ import time
 
 @jit
 def gen_conv_filters(numConvFilter, convFilterSize):
-    return np.random.rand(numConvFilter, convFilterSize,
+    return np.random.rand(1, numConvFilter, convFilterSize,
                           convFilterSize) / (convFilterSize * convFilterSize)
 
 
 @jit
 def gen_softmax_weights(numNode, inputLength):
-    return np.random.rand(numNode, inputLength) / inputLength
+    return np.random.rand(1, numNode, inputLength) / inputLength
 
 
 @cuda.jit
@@ -374,25 +374,54 @@ def average_sum_gradient(d_softmaxWeightGradient,
                                                       numImage)
 
 
-@jit
-def update_softmax_layer(weigth, bias, learningRate, d_L_d_w, d_L_d_b):
-    # Cập nhật weigth
-    for row in range(weigth.shape[0]):
-        for col in range(weigth.shape[1]):
-            weigth[row, col] -= learningRate * d_L_d_w[row, col]
-
-    # Cập nhật bias
-    for i in range(len(d_L_d_b)):
-        bias[i] -= learningRate * d_L_d_b[i]
+@cuda.jit
+def update_softmax_weight_kernel(weigth, learningRate, d_L_d_w):
+    c, r = cuda.grid(2)
+    if r >= weigth.shape[0] or c >= weigth.shape[1]:
+        return
+    weigth[r, c] -= learningRate * d_L_d_w[r, c]
 
 
-@jit
-def update_conv_layer(convFilters, learningRate, d_L_d_filters):
-    for node in range(convFilters.shape[0]):
-        for row in range(convFilters.shape[1]):
-            for col in range(convFilters.shape[2]):
-                convFilters[node, row, col] -= learningRate * \
-                    d_L_d_filters[node, row, col]
+@cuda.jit
+def update_softmax_bias_kernel(bias, learningRate, d_L_d_b):
+    i = cuda.grid(1)
+    if i >= bias.shape[0]:
+        return
+    bias[i] -= learningRate * d_L_d_b[i]
+
+
+def update_softmax_layer(d_weigth,
+                         d_bias,
+                         learningRate,
+                         d_d_L_d_w,
+                         d_d_L_d_b,
+                         blockSize=(32, 32)):
+    gridsize = (math.ceil(d_weigth.shape[1] / blockSize[0]),
+                math.ceil(d_weigth.shape[0] / blockSize[1]))
+    update_softmax_weight_kernel[gridsize, blockSize](d_weigth, learningRate,
+                                                      d_d_L_d_w)
+    gridsize = math.ceil(d_bias.shape[0] / blockSize[1])
+    update_softmax_bias_kernel[gridsize, blockSize[1]](d_bias, learningRate,
+                                                       d_d_L_d_b)
+
+
+@cuda.jit
+def update_conv_filters_kernel(convFilters, learningRate, d_L_d_filters):
+    c, r, node = cuda.grid(3)
+    if node >= convFilters.shape[0] or r >= convFilters.shape[
+            1] or c >= convFilters.shape[2]:
+        return
+    convFilters[node, r, c] -= learningRate * d_L_d_filters[node, r, c]
+
+
+
+def update_conv_layer(d_convFilters, learningRate, d_d_L_d_filters, blockSize=(32, 32)):
+    gridsize = (
+        math.ceil(d_convFilters.shape[2] / blockSize[0]),
+        math.ceil(d_convFilters.shape[1] / blockSize[1]),
+        d_convFilters.shape[0]
+    )
+    update_conv_filters_kernel[gridsize, blockSize](d_convFilters, learningRate, d_d_L_d_filters)
 
 
 @cuda.jit(device=True)
@@ -433,10 +462,15 @@ def train(d_trainImages, d_trainLabels, learningRate, batchSize, convFilters,
     accuracy = np.zeros(1)
 
     ''' Phần cấp phát vùng nhớ cố định cho device '''
+    d_convFilters = cuda.to_device(convFilters[0])
+    d_softmaxWeightTranspose = cuda.to_device(softmaxWeight[0].transpose())
+    d_softmaxWeight = cuda.to_device(softmaxWeight[0])
+    d_softmaxBias = cuda.to_device(softmaxBias[0])
+
     d_convOutput = cuda.device_array(
-        (batchSize, convFilters.shape[0],
-         d_trainImages.shape[1] - convFilters.shape[1] + 1,
-         d_trainImages.shape[2] - convFilters.shape[2] + 1),
+        (batchSize, d_convFilters.shape[0],
+         d_trainImages.shape[1] - d_convFilters.shape[1] + 1,
+         d_trainImages.shape[2] - d_convFilters.shape[2] + 1),
         dtype=float)
     d_maxpoolOutput = cuda.device_array(
         (d_convOutput.shape[0], d_convOutput.shape[1],
@@ -448,7 +482,7 @@ def train(d_trainImages, d_trainLabels, learningRate, batchSize, convFilters,
          d_maxpoolOutput.shape[2], d_maxpoolOutput.shape[3], 2),
         dtype=int)
     d_postSoftmax = cuda.device_array(
-        (d_maxpoolOutput.shape[0], softmaxBias.shape[0]), dtype=float)
+        (d_maxpoolOutput.shape[0], d_softmaxBias.shape[0]), dtype=float)
 
     d_d_L_d_out = cuda.to_device(np.zeros(d_postSoftmax.shape))
 
@@ -458,16 +492,16 @@ def train(d_trainImages, d_trainLabels, learningRate, batchSize, convFilters,
          d_maxpoolOutput.shape[2], d_maxpoolOutput.shape[3]),
         dtype=float)
     d_newSoftmaxWeightGradient = cuda.device_array(
-        (d_d_L_d_out.shape[0], softmaxWeight.shape[0],
-         softmaxWeight.shape[1]),
+        (d_d_L_d_out.shape[0], d_softmaxWeight.shape[0],
+         d_softmaxWeight.shape[1]),
         dtype=float)
     d_newSoftmaxBiasGradient = cuda.device_array_like(d_postSoftmax)
 
     d_maxpoolGradient = cuda.device_array_like(d_convOutput)
 
     d_newConvFilterGradient = cuda.device_array(
-        (d_d_L_d_out.shape[0], convFilters.shape[0], convFilters.shape[1],
-         convFilters.shape[2]),
+        (d_d_L_d_out.shape[0], d_convFilters.shape[0], d_convFilters.shape[1],
+         d_convFilters.shape[2]),
         dtype=float)
     ''' Kết thúc phần cấp phát vùng nhớ cố định cho device '''
 
@@ -476,12 +510,6 @@ def train(d_trainImages, d_trainLabels, learningRate, batchSize, convFilters,
         d_imageBatch = d_trainImages[batch:batch + batchSize]
         d_labelBatch = d_trainLabels[batch:batch + batchSize]
         numImage = d_imageBatch.shape[0]
-
-        # Copy các tham số sang device
-        d_convFilters = cuda.to_device(convFilters)
-        d_softmaxWeightTranspose = cuda.to_device(softmaxWeight.transpose())
-        d_softmaxWeight = cuda.to_device(softmaxWeight)
-        d_softmaxBias = cuda.to_device(softmaxBias)
 
         # Cấp phát vùng nhớ cho các gradient tổng trung bình
         d_softmaxWeightGradient = cuda.to_device(
@@ -519,12 +547,12 @@ def train(d_trainImages, d_trainLabels, learningRate, batchSize, convFilters,
                              d_newSoftmaxBiasGradient, d_convFilterGradient,
                              d_newConvFilterGradient, numImage)
 
-        # Copy các trọng số qua host và cập nhật
-        softmaxWeightGradient = d_softmaxWeightGradient.copy_to_host()
-        softmaxBiasGradient = d_softmaxBiasGradient.copy_to_host()
-        convFilterGradient = d_convFilterGradient.copy_to_host()
-        update_softmax_layer(softmaxWeight, softmaxBias, learningRate, softmaxWeightGradient, softmaxBiasGradient)
-        update_conv_layer(convFilters, learningRate, convFilterGradient)
+        update_softmax_layer(d_softmaxWeight, d_softmaxBias, learningRate, d_softmaxWeightGradient, d_softmaxBiasGradient)
+        update_conv_layer(d_convFilters, learningRate, d_convFilterGradient)
+
+    convFilters[0] = d_convFilters.copy_to_host()
+    softmaxWeight[0] = d_softmaxWeight.copy_to_host()
+    softmaxBias[0] = d_softmaxBias.copy_to_host()
 
     return loss[0] / d_trainImages.shape[0], (accuracy[0] / d_trainImages.shape[0])
 
@@ -535,14 +563,15 @@ def validate(d_validateImages, d_validateLabels, batchSize, convFilters, maxpool
     accuracy = np.zeros(1)
 
     # Copy các tham số sang device
-    d_convFilters = cuda.to_device(convFilters)
-    d_softmaxWeightTranspose = cuda.to_device(softmaxWeight.transpose())
-    d_softmaxBias = cuda.to_device(softmaxBias)
+    d_convFilters = cuda.to_device(convFilters[0])
+    d_softmaxWeightTranspose = cuda.to_device(softmaxWeight[0].transpose())
+    d_softmaxBias = cuda.to_device(softmaxBias[0])
 
+    ''' Phần cấp phát vùng nhớ cố định cho device '''
     d_convOutput = cuda.device_array(
-        (batchSize, convFilters.shape[0],
-         d_validateImages.shape[1] - convFilters.shape[1] + 1,
-         d_validateImages.shape[2] - convFilters.shape[2] + 1),
+        (batchSize, d_convFilters.shape[0],
+         d_validateImages.shape[1] - d_convFilters.shape[1] + 1,
+         d_validateImages.shape[2] - d_convFilters.shape[2] + 1),
         dtype=float)
     d_maxpoolOutput = cuda.device_array(
         (d_convOutput.shape[0], d_convOutput.shape[1],
@@ -554,7 +583,8 @@ def validate(d_validateImages, d_validateLabels, batchSize, convFilters, maxpool
          d_maxpoolOutput.shape[2], d_maxpoolOutput.shape[3], 2),
         dtype=int)
     d_postSoftmax = cuda.device_array(
-        (d_maxpoolOutput.shape[0], softmaxBias.shape[0]), dtype=float)
+        (d_maxpoolOutput.shape[0], d_softmaxBias.shape[0]), dtype=float)
+    ''' Kết thúc phần cấp phát vùng nhớ cố định cho device '''
 
     for batch in range(0, d_validateImages.shape[0], batchSize):
         d_imageBatch = d_validateImages[batch:batch + batchSize]
@@ -583,9 +613,9 @@ def main():
     numConvFilter = 32
     maxpoolSize = 2
     numClass = 10
-    learningRate = 0.005
+    learningRate = 0.0001    # sửa thành 0.0001
     batchSize = 100
-    epoch = 20
+    epoch = 100
 
     print("Loading data...")
     (trainImages, trainLabels), (validateImages,
@@ -610,7 +640,7 @@ def main():
             ((trainImages.shape[2] - convFiltersSize + 1) /
              maxpoolSize)) * numConvFilter
     softmaxWeights = gen_softmax_weights(numClass, softmaxWeightsLength)
-    softmaxBiases = np.zeros(numClass)
+    softmaxBiases = np.zeros((1, numClass))
 
     print("Start training...")
     print("\n--------------Our model--------------\n")
