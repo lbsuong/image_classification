@@ -232,7 +232,7 @@ def softmax_backprop_use_kernel(gradient_out, learningRate, weights, biases, max
                                                    cuda_gradient_err_weights)
         gradient_err_weights_1 = cuda_gradient_err_weights.copy_to_host()
         for j in range(gradient_out.shape[1]):
-            gradient_err_biases[j] = gradient_out[i, j] / maxpoolOutputs.shape[0]
+            gradient_err_biases[j] = gradient_err_biases[j] + gradient_out[i, j] / maxpoolOutputs.shape[0]
         grid_size_2 = (1, 1)
         dot_kernel[grid_size_2, block_size](cuda_gradient_out_, cuda_weights,
                                             cuda_gradient_err_inputs[i])
