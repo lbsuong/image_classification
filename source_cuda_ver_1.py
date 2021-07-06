@@ -107,21 +107,6 @@ def maxpool_forward_kernel_wrapper(d_input, poolSize, blockSize=(32, 32)):
     return d_output, d_maxPosition
 
 
-@cuda.jit
-def softmax_kernel(d_input, d_output, d_bias):
-    image = cuda.grid(1)
-    if image >= d_output.shape[0]:
-        return
-    for j in range(d_output.shape[1]):
-        d_output[image, j] = d_input[image, j] + d_bias[image]
-        d_output[image, j] = math.exp(d_output[image, j])
-    total = 0
-    for j in range(d_output.shape[1]):
-        total += d_output[image, j]
-    for j in range(d_output.shape[1]):
-        d_output[image, j] /= total
-
-
 @jit
 def softmax(X):
     total = 0

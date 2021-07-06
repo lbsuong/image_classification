@@ -18,16 +18,6 @@ def gen_softmax_weights(numNode, inputLength):
 
 
 @cuda.jit
-def dot_2D_kernel(A, B, C):
-    c, r = cuda.grid(2)
-    if r >= C.shape[0] or c >= C.shape[1]:
-        return
-    C[r, c] = 0
-    for col in range(A.shape[1]):
-        C[r, c] += A[r, col] * B[col, c]
-
-
-@cuda.jit
 def dot_3D2D_kernel(A, B, C):
     c, r, node = cuda.grid(3)
     if node >= C.shape[0] or r >= C.shape[1] or c >= C.shape[2]:
