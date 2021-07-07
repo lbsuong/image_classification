@@ -605,7 +605,7 @@ def main():
     numClass = 10
     learningRate = 0.0001    # sửa thành 0.0001
     batchSize = 100
-    epoch = 100
+    epoch = 10
 
     print("Loading data...")
     (trainImages, trainLabels), (validateImages,

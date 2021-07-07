@@ -575,7 +575,7 @@ def main():
     numClass = 10
     learningRate = 0.005
     batchSize = 100
-    epoch = 20
+    epoch = 10
 
     print("Loading data...")
     (trainImages, trainLabels), (validateImages,
