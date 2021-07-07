@@ -39,4 +39,4 @@ Huấn luyện Convolutional Neural Network để phân lớp ảnh bằng Stoch
 | Cả nhóm | Tối ưu hoá lần 1 | 01/07/2021 | 30/06/2021 |
 | Cả nhóm | Tối ưu hoá lần 2 | 04/07/2021 | 01/07/2021 |
 | Cả nhóm | Tối ưu hoá lần 3 | 08/07/2021 | 02/07/2021 |
-| Cả nhóm | Tối ưu hoá lần 4 | 08/07/2021 | ... |
+| Cả nhóm | Hoàn chỉnh báo cáo | 08/07/2021 | ... |
