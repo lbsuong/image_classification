@@ -1,0 +1,3 @@
+Nội dung trong report.ipynb đa phần là nội dung báo cáo, chỉ có ít là các đoạn code có thể thực thi là "!python *.py".
+Đặt file source.py, source_cuda_ver_1.py, source_cuda_ver_2.py, source_cuda_ver_3.py trong cùng thư mục với file report.ipynb.
+Sau đó thực thi các đoạn code ở file report.ipynb.
